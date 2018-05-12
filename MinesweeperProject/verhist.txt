@@ -1,0 +1,113 @@
+v1.0: It works!!! 2 single-cell solver strategies and 3 multi-cell solver strategies, supports random-guessing or
+		always-succeed guessing (to get to the endgame more reliably)
+v1.1: Improved stat-tracking and printouts in too many ways to mention
+v1.2: Fixed a stupid bug in nonoverlap-safe and nonoverlap-flag that prevented them from being applied at all
+v1.3: Allowed for nonoverlap-safe to be applied multiple times sequentially to the same cell 
+v1.4: Restructured 121-line strategy into 121-cross, because it failed a few times. Hasn't failed since the change
+v1.5: Changed multi-cell logic from making only one pass to the "loop until nothing is changed" paradigm
+
+v2.0: Added "smartguess" feature, calculates the % risk in each of the "border cells" (where visible
+		adjacency cells give some information about the unknown cells' contents) and in the "interior
+		cells" (where I have no information), then chooses a cell with the lowest risk.
+		Sadly this algorithm is HIDEOUSLY inefficient and increases runtime by a factor of 120x (not 120%)
+v2.1: MASSIVE time improvement in smartguess algorithm, by adding a number of shortcuts and limits. Time gap reduced
+		to 4x - 8x
+		A) shortcut: when all remaining border cells each satisfy only one adjacency cell, then don't even
+		   recurse, just return the sum of their adjacency values (because at this point the order has no effect
+		   on the number of mines placed). Massive improvements in early/midgame when there are "islands" of revealed
+		   cells in a "sea" of unknowns, mild improvement in lategame. No loss of accuracy.
+		B) width-limit: at each level (except for the initial entry-point) it only tries 2 (configurable)
+		   of the unk cells tied for max size as start points for recursion, instead of all. Reduces accuracy somewhat.
+		C) depth-limit: after recursing down 8 (configurable) layers of recursion, AKA placing 8 mines, it
+		   stops branching at all and sets the width-limit to 1. Reduces accuracy somewhat.
+v2.2: Changed recursive algorithm finding minimum allocation of border mines to instead find
+		the MAXIMUM allocation when starting at the most "crowded" cells; a sorta compromise/split,
+		finding the maximum of the minimum allocation or something. I don't understand why it works
+		better, but it more closely approximates the true number of mines in the border cells. Slight success
+		improvement, I forget the number :(
+		(Old avg deviation approx -0.4, new avg deviation approx -0.29)
+		Also prints the avg deviation number, because I can.
+v2.3: Changed border-cell risk calculation to use average of all possibilities instead of max, slight
+		success improvement (30.8% -> 31.7% over 3k games) 
+
+v3.0: Changed some ways variables/data are stored (unimportant)
+		Compiled it in "release" mode, preparing for post on Facebook
+		   MAJOR NOTE: when compiled in "release" mode it goes approx. 100x faster!!!!!!!!!!!!!!!!!!! Average game
+		   time is down below 10ms!!!!!!!! When using SCREEN_def=0, average game time down below 2ms!!!!!!!
+		Increased resolution of 'elapsed time' to account for going so much faster
+		Added minimum delay of 1ms to each game, just in case, to guarantee each game has a unique seed
+		Added command-line args, interactive prompting for settings, #defines now only set the default values
+		Also removed some of what's printed to screen on SCREEN_def=1, now its only end-game status and summary
+		The field is printed to log at each stage only when SCREEN_def=1/2, but transition map & stats are always printed to log
+v3.1: To better support "double-click from windows explorer", after failing to parse it will pause instead of closing terminal
+		Added 'comb' function for use in podwise-recursion (next version)
+		A few other misc improvements
+v4.0: New and improved recursive algorithm method! IT WORKS! Still needs some tweaking and refinement, tho
+		Modified the comb function
+		Modified 'reveal' function to just set the cell state to SATISFIED when revealing a 0
+v4.1: Podwise-recursion returns a list of all the possible allocation numbers(so I can average them), instead of just max and min 
+		Bugfix: if # of mines remaining = # of unknown cells remaining, flag them and win!
+		Bugfix: forgot to multiply interior_risk by 100
+		Redid structure of hunting/guessing section to reduce redundant code
+		Changed 'always succeed' option to instead be 'pick zeroes until some logic is applied',
+		TODO: find a 'rabbithole' seed and figure out where to put limiters in the recursive alg
+v4.2: Removed the old smartguess code, new version gives comparable results but vastly superior speed
+v4.3: Changed the podwise_return::avg to discard anything bigger than the ceiling instead of concatting
+		NOTE: this is a potential source of error in the future, if I put in limiters and don't find all possible allocs
+		Added function:comb_int and function:factorial (currently unused)
+		Removed even more old smartguess code I missed, modified some unlikely or impossible assert() statements, and deleted 
+			some commented code I'm not ever bringing back
+		Restructured steps 3b/3c in podwise recursion, hopefully solves the dupes problem, undershoot problem, and looping problem
+		Actually compared v3.0 with v4.3 side-by-side... over 10k games without any printing, new algorithm reduced avg game time 
+			from 0.0046 sec -> 0.0023 sec, and increased winrate from 31.3% -> 32.6%. Expect that the winrate still has +/- 1% wiggle,
+			even over 10k games, so they should be considered about the same winrate. Also the prediction deviation changed from 
+			-0.2957 -> +0.1261, I think negative would be preferrable to positive but the absolute deviation is much less.
+		Added version printout, just cuz I can
+v4.4: Added safety limiter on the recursion, shouldn't be used very often at all. 
+		NOTE: do I want avg to return 0 or mines_remaining if there are no valid entries?
+v4.5: Massive restructuring of the podwise_return object and the find_allocations function (now find_scenarios)
+		Preparation for logic to let it see and apply solutions to the game in the final stages
+		Requires knowing that there is only one way to allocate the cells to produce a given solution... that allocation info
+			can be used to do a weighted avg instead of an unweighted avg
+		human-guess deviation jumped from +0.13 to +0.16 ??????
+		zguess deviation jumped from +0.36 to +0.50 ?????? it should be better, not worse!! 
+			(winrate is unchanged, 58% +/- 0.3% with zguess)
+v4.6: Implemented the end-game solver logic: when # of mines remaining is below a certain threshold, smartguess will store the actual
+			allocation found for each solution #. If there is only one allocation possible, it might be applied directly instead of
+			making a risky choice. Specifically, this changes winrate in an 'elbow' scenario from 33% to 100%, but has application 
+			in other situations too.
+		zguess winrate jumped from 58% to 59%, much less than I was hoping for
+		Also the smartguess deviation jumped again, as a result of not counting the deviation # when applying a solution
+		Bugfix: removed smartguess step 1b, was a bad idea, what was I even thinking
+		Added new transition map key, A = advanced logic = whatever comes out of smartguess that isn't an actual guess
+		Revealed several new bugs related to looping-problem
+		Revealed bug: will only return parts of an "exact answer" that are links, needs to return the whole thing
+v4.7: Hopefully fixed looping-problem, now algorithm will (hopefully) always return a sensible answer
+		Improved stat tracking when smartguess loses
+		Added printout for average # of guesses per game (not counting initial blind guess)
+		Fixed the "exact answer" incompleteness... increased memory usage (as expected) but speed is unchanged
+
+v4.8: Minor tweaks to comments and if-statement conditions
+		Changed SC, MC so trans-map entries are the # of cells flaged/cleared, not the # of times applied
+		Changed reveal() so it also counts the zero-cells
+		Finally removed the hunting-guessing distinction
+		Added trans-map entries for random-guessing and zero-guessing (r and z), ^ is now for smartguess specifically
+		Changed the run-end stats to display (0-15)(15-85)(85-100) in terms of completion when it loses
+		Changed random seeding to use <random> library instead of sequential values from time; removes 1ms floor
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
