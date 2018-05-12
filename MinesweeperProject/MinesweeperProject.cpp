@@ -1,66 +1,34 @@
 /* 
 MinesweeperProject.cpp
-Brian Henson, 4/2/2018, v3.0
+Brian Henson, 4/2/2018, v4.7
 This whole program (and all solver logic within it) was developed all on my own, without looking up anything
 online. I'm sure someone else has done their PHD thesis on creating the 'perfect minesweeper solver' but I
 didn't look at any of their work, I developed these strategies all on my own.
 
 Contents: 
-MinesweeperProject.cpp, stdafx.cpp, stdafx.h
+MinesweeperProject.cpp, stdafx.cpp, stdafx.h, verhist.txt
 */
 
-/*
-v1.0: It works!!! 2 single-cell solver strategies and 3 multi-cell solver strategies, supports random-guessing or
-		always-succeed guessing (to get to the endgame more reliably)
-v1.1: Improved stat-tracking and printouts in too many ways to mention
-v1.2: Fixed a stupid bug in nonoverlap-safe and nonoverlap-flag that prevented them from being applied at all
-v1.3: Allowed for nonoverlap-safe to be applied multiple times sequentially to the same cell 
-v1.4: Restructured 121-line strategy into 121-cross, because it failed a few times. Hasn't failed since the change
-v1.5: Changed multi-cell logic from making only one pass to the "loop until nothing is changed" paradigm
+// NOTE: v4.4, moved version history to verhist.txt because VisualStudio is surprisingly awful at scanning long block-comments
 
-v2.0: Added "smartguess" feature, calculates the % risk in each of the "border cells" (where visible
-		adjacency cells give some information about the unknown cells' contents) and in the "interior
-		cells" (where I have no information), then chooses a cell with the lowest risk.
-		Sadly this algorithm is HIDEOUSLY inefficient and increases runtime by a factor of 120x (not 120%)
-v2.1: MASSIVE time improvement in smartguess algorithm, by adding a number of shortcuts and limits. Time gap reduced
-		to 4x - 8x
-		A) shortcut: when all remaining border cells each satisfy only one adjacency cell, then don't even
-		   recurse, just return the sum of their adjacency values (because at this point the order has no effect
-		   on the number of mines placed). Massive improvements in early/midgame when there are "islands" of revealed
-		   cells in a "sea" of unknowns, mild improvement in lategame. No loss of accuracy.
-		B) width-limit: at each level (except for the initial entry-point) it only tries 2 (configurable)
-		   of the unk cells tied for max size as start points for recursion, instead of all. Reduces accuracy somewhat.
-		C) depth-limit: after recursing down 8 (configurable) layers of recursion, AKA placing 8 mines, it
-		   stops branching at all and sets the width-limit to 1. Reduces accuracy somewhat.
-v2.2: Changed recursive algorithm finding minimum allocation of border mines to instead find
-		the MAXIMUM allocation when starting at the most "crowded" cells; a sorta compromise/split,
-		finding the maximum of the minimum allocation or something. I don't understand why it works
-		better, but it more closely approximates the true number of mines in the border cells. Slight success
-		improvement, I forget the number :(
-		(Old avg deviation approx -0.4, new avg deviation approx -0.29)
-		Also prints the avg deviation number, because I can.
-v2.3: Changed border-cell risk calculation to use average of all possibilities instead of max, slight
-		success improvement (30.8% -> 31.7% over 3k games) 
 
-v3.0: Changed some ways variables/data are stored (unimportant)
-		Compiled it in "release" mode, preparing for post on Facebook
-		   MAJOR NOTE: when compiled in "release" mode it goes approx. 100x faster!!!!!!!!!!!!!!!!!!! Average game
-		   time is down below 10ms!!!!!!!! When using DEBUG=0, average game time down below 2ms!!!!!!!
-		Increased resolution of 'elapsed time' to account for going so much faster
-		Added minimum delay of 1ms to each game, just in case, to guarantee each game has a unique seed
-		Added command-line args, interactive prompting for settings, #defines now only set the default values
-		Also removed some of what's printed to screen on DEBUG=1, now its only end-game status and summary
-		The field is printed to log at each stage only when DEBUG=1/2, but transition map & stats are always printed to log
-*/
 
-//TODO: change 'smartguess' method to use 'pods'
 
+// TODO: could rearchitect the multicell loop so that 121-cross gets more use... is that useful? is that efficient?
+// TODO: test algorithm speed/accuracy with choosing a pod in the middle, or in the front
+// TODO: change the logfile print method to instead use >> so if it unexpectedly dies I still have a partial logfile, and/or can read it
+//		while the code is running? very anoying how 'release' mode optimizes away the fflush command
+// TODO: split code between multiple files
+
+
+// NOTE: could turn the field object into a struct, and turn many functions/variables into members... lots of effort for no real benefit
+// other than object-based code
 
 
 
 // from targetver.h:
 #include <SDKDDKVer.h> // not sure what this is but Visual Studio wants me to have it
-
+ 
 #include "stdafx.h" // Visual Studio requires this, even if it adds nothing
 
 
@@ -79,6 +47,9 @@ v3.0: Changed some ways variables/data are stored (unimportant)
 
 #include <chrono> // just because time(0) only has 1-second resolution
 #include <cstdarg> // for variable-arg function-macro
+#include <algorithm> // for pod-based intelligent recursion
+#include <random> // because I don't like using sequential seeds, or waiting when going very fast
+
 
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -129,20 +100,17 @@ struct game_stats {
 		strat_121 = 0;
 		strat_nov_safe = 0;
 		strat_nov_flag = 0;
-		times_hunting = 0;
 		times_guessing = 0;
 		gamestate = GUESSING; // first stage is a blind guess
-		began_guessing = false;
 		began_solving = false;
 	}
 	int strat_121, strat_nov_safe, strat_nov_flag; // number of times each MC strategy was used
-	int times_hunting, times_guessing; // number of times it needed to do hunting or guessing
+	int times_guessing; // number of times it needed to do hunting or guessing
 	//records the phase transition history of solving the game, and the # of operations done in each phase
-	// ^=hunting, G=guessing, s=single-cell, m=multi-cell
+	// ^#=hunting, G#=guessing, s#=single-cell, m#=multi-cell, A=advanced
 	std::string trans_map;
 	game_state gamestate; // where in the solver algorithm I am, to track where it was when it ended
 	bool began_solving; // did I begin solving things, or did I lose before anything could be done?
-	bool began_guessing; // how to tell if the game was deterministic or not
 };
 
 // win/loss stats for a single program run
@@ -158,17 +126,21 @@ struct run_stats {
 		games_won_guessing = 0;
 		games_lost = 0;
 		games_lost_beginning = 0;
-		games_lost_hunting = 0;
-		games_lost_guessing = 0;
 		games_lost_unexpectedly = 0;
+		games_lost_lategame = 0;
+		games_lost_midgame = 0;
+		games_lost_earlygame = 0;
 		strat_121_total = 0;
 		strat_nov_safe_total = 0;
 		strat_nov_flag_total = 0;
 		smartguess_attempts = 0;
-		smarguess_maxret_diff = 0;
+		smartguess_diff = 0.;
+		smartguess_valves_triggered = 0;
 		games_with_eights = 0;
+		num_guesses_total = 0;
 	}
 
+	void print_final_stats();
 	long start;
 	int games_total;			// total games played to conclusion (not really needed but w/e)
 
@@ -178,55 +150,239 @@ struct run_stats {
 
 	int games_lost;				// total games lost
 	int games_lost_beginning;	// games lost before any logic could be applied (0 when hunting correctly)
-	int games_lost_hunting;		// games lost in random hunting (0 when hunting correctly)
-	int games_lost_guessing;	// games lost in end-game guessing
+	int games_lost_earlygame;	// 0-15% completed
+	int games_lost_midgame;		// 15-85% completed
+	int games_lost_lategame;	// 85-99% completed
 	int games_lost_unexpectedly;// losses from other situations (should be 0)
 
 	int strat_121_total;
 	int strat_nov_safe_total;
 	int strat_nov_flag_total;
+	int num_guesses_total;
+
 	int smartguess_attempts;
-	int smarguess_maxret_diff;
+	float smartguess_diff;
+	int smartguess_valves_triggered;
 	int games_with_eights;
 };
 
 
-// TODO: can consolidate risk_unk and risk_adj into one struct; but either the 'risk' OR the 'eff' values would be unused at any time
-// upside: simpler, smaller recursion code... downside: less memory-efficient
-struct risk_unk {
-	risk_unk() {}
-	risk_unk(struct cell * itsme) {
-		me = itsme;
-		//risk = 0.;
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// struct declarations without the actual contents
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// new pod-based architecture, HEAVILY object-based unlike how it was before
+// tons of thinking and writing but it may just be completely scrapped depending on how it performs :(
+
+
+
+struct solutionobj {
+	solutionobj() {}
+	solutionobj(float ans, int howmany) {
+		answer = ans; allocs = howmany;
+		solution_flag = std::list<struct cell *>(); // init as empty list
 	}
-	struct cell * me;
-	std::list<float> risk;
-	std::list<struct cell *> Nlist; // list of neighboring visible adjacency cells
+	float answer; // the number of mines determined to be in the chain 
+	int allocs; // how many allocations this answer corresponds to
+	std::list<struct cell *> solution_flag; // cells to flag to apply this solution
 };
 
-struct risk_adj {
-	risk_adj() {}
-	risk_adj(struct cell * itsme) {
-		me = itsme;
-		eff = itsme->effective;
+
+// holds the list of all allocations found, as a struct for some extra utility
+// to combine the results of recursion on separate chains, average the results from each chain and sum them
+struct podwise_return {
+	podwise_return() { // construct empty
+		solutions = std::list<struct solutionobj>();
+		effort = 0;
 	}
-	struct cell * me;
-	short eff;
-	std::list<struct cell *> Nlist; // list of neighboring risk_unk structs
+	podwise_return(float ans, int howmany) { // construct from one value
+		solutions = std::list<struct solutionobj>(1, solutionobj(ans, howmany));
+		effort = 1;
+	}
+
+	// podwise_return += list of cell pointers: append into all solutions
+	inline struct podwise_return& operator+=(const std::list<struct cell *>& addlist) {
+		for (std::list<struct solutionobj>::iterator listit = solutions.begin(); listit != solutions.end(); listit++) {
+			listit->solution_flag.insert(listit->solution_flag.end(), addlist.begin(), addlist.end());
+		}
+		return *this;
+	}
+	// podwise_return *= int: multiply into all 'allocs' in the list
+	inline struct podwise_return& operator*=(const int& rhs) {
+		for (std::list<struct solutionobj>::iterator listit = solutions.begin(); listit != solutions.end(); listit++) {
+			listit->allocs *= rhs;
+		}
+		return *this;
+	}
+	// podwise_return += int: increment all 'answers' in the list
+	inline struct podwise_return& operator+=(const int& rhs) {
+		for (std::list<struct solutionobj>::iterator listit = solutions.begin(); listit != solutions.end(); listit++) {
+			listit->answer += rhs;
+		}
+		return *this;
+	}
+	// podwise_return += podwise_return: combine
+	inline struct podwise_return& operator+=(const struct podwise_return& rhs) {
+		solutions.insert(solutions.end(), rhs.solutions.begin(), rhs.solutions.end());
+		effort += rhs.effort;
+		return *this;
+	}
+	
+	inline int size() { return solutions.size(); }
+	// returns value 0-1 showing what % of allocations were NOT tried (because they were found redundant)
+	inline float efficiency() {
+		float t1 = float(effort) / float(total_alloc());
+		float t2 = 1. - t1;
+		if (t2 > 0.) { return t2; } else { return 0.; }
+	}
+	//inline void validate();
+	float avg();
+	struct solutionobj * max();
+	float max_val();
+	struct solutionobj * min();
+	float min_val();
+	int total_alloc();
+
+	std::list<struct solutionobj> solutions; // list of all allocations found; unsorted, includes many duplicates
+	// represents # of solutions found, perseveres even after .avg function
+	int effort;
 };
 
 
-// object returned by the recursive layers; could easily add other returnable info (like the exact allocation found)
-struct recursion_return {
-	recursion_return() {}
-	recursion_return(int max) {
-		//minret = min;
-		maxret = max;
+
+
+// represents the adjacent unknown cells of a visible adjacency number
+// almost certain to have some overlap with other pods; these are recorded as 'links'
+struct pod {
+	pod() {}
+	pod(struct cell * new_root);
+	// shortcut to calculate the risk for a pod
+	float risk() { return (100. * float(mines) / float(size())); }
+	// if outside recursion, return cell_list.size(); if inside recursion, return cell_list_size
+	int size() { if (cell_list_size < 0) { return cell_list.size(); } else { return cell_list_size; } }
+	// scan the pod for any "special cases", perform switch() on result:
+	// 0=normal, 1=negative risk, 2=0 risk, 3=100 risk, 4=disjoint, 
+	int scan() {
+		if (links.empty()) { return 4; }
+		float z = risk(); // might crash if it tries to divide by size 0, so disjoint-check must be first
+		if (z < 0.) { return 1; }
+		if (z == 0.) { return 2; }
+		if (z == 100.) { return 3; }
+		return 0;
 	}
-	//int minret;
-	int maxret;
+	void add_link(struct cell * shared, struct cell * shared_root);
+	int remove_link(struct cell * shared, bool isaflag);
+	std::list<struct scenario> pod::find_scenarios();
+	std::list<struct link>::iterator get_link(int l);
+	struct cell * root; //the visible adjacency-cell the pod is based on (or one of them if there were dupes)
+	int mines;			//how many mines are in the pod
+	std::list<struct link> links; //cells shared by other pods... list because will often remove from this
+	std::vector<struct cell *> cell_list;  //all the cells in the pod, including link cells... NOTE: only used OUTSIDE recusion!
+	int cell_list_size; // number of cells in the pod, including link cells... NOTE: only used INSIDE recursion!
+	int chain_idx;		// used to identify chains... NOTE: only used OUTSIDE recursion!
 };
 
+// represents an overlap cell shared by 2 or more pods
+struct link {
+	link() {}
+	link(struct cell * shared, struct cell * shared_root);
+	inline bool operator== (const struct link o) const; // need this to use the 'remove by value' function
+	struct cell * link_cell;
+	std::list<struct cell *> linked_roots;
+};
+
+// chain = a group of pods. when recursing, a chain begins as a group of interconnected/overlapping pods...
+// when not recursing its probably the "master chain" which isn't a chain at all, just the set of all pods
+struct chain {
+	chain();
+	std::list<struct pod>::iterator root_to_pod(struct cell * linked_root);
+	std::list<struct pod>::iterator int_to_pod(int f);
+	int identify_chains();
+	void identify_chains_recurse(int idx, struct pod * me);
+	std::vector<struct chain> sort_into_chains(int r, bool reduce);
+	std::list<struct pod> podlist; // the only member, a list of (probably) overlapping pods
+};
+
+// only returned by riskholder calculation, could use a tuple instead but i dont wanna learn another new thing
+struct riskreturn {
+	riskreturn() {};
+	riskreturn(float m, std::list<struct cell *> * l) {
+		minrisk = m;
+		minlist = *l;
+	}
+	float minrisk;
+	std::list<struct cell *> minlist;
+};
+// only used to tie together links to remove with a boolean; could use a tuple instead but i dont wanna
+struct link_with_bool {
+	link_with_bool() {}
+	link_with_bool(struct link asdf, bool f) {
+		flagme = f;
+		l = asdf;
+	}
+	bool flagme;
+	struct link l;
+};
+
+// an immitation of the 'field' object, to be allocated statically (globally??) and reused each time the pod-smart-guess is used
+// holds the risk info for each cell, will calculate the border cells with the lowest risk
+struct riskholder {
+	riskholder() {}
+	riskholder(int x, int y);
+
+	// takes a cell pointer and adds a risk to its list
+	// could modify to use x/y, but why bother?
+	void addrisk(struct cell * foo, float newrisk) {
+		(riskarray[foo->x][foo->y]).riskvect.push_back(newrisk);
+	}
+	// find the avg of the risks and return that average; also clear the list. if list is already empty, return -1
+	// PRIVATE! internal use only
+	float finalrisk(int x, int y) {
+		if ((riskarray[x][y]).riskvect.empty())
+			return -1.;
+		float sum = 0; int s = (riskarray[x][y]).riskvect.size();
+		for (int i = 0; i < s; i++) {
+			sum += (riskarray[x][y]).riskvect[i];
+		}
+		(riskarray[x][y]).riskvect.clear(); // clear it for use next time
+		return (sum / float(s));
+	}
+	struct riskreturn findminrisk();
+
+	// a struct used only within this struct
+	struct riskcell {
+		riskcell() {
+			riskvect = std::vector<float>(); // why not
+			riskvect.reserve(8); // maximum size of vector is 8 (but highly unlikely)
+		}
+		std::vector<float> riskvect; // list of risks from various sources
+	};
+	// immitation of the 'field' for holding risk info, can be quickly accessed with x and y
+	std::vector<std::vector<struct riskcell>> riskarray;
+};
+
+// bundles the list of links to flag with an allocation #
+struct scenario {
+	scenario() {}
+	scenario(std::list<std::list<struct link>::iterator> map, int num) {
+		roadmap = map;
+		allocs = num;
+	}
+	std::list<std::list<struct link>::iterator> roadmap; // list of link-list-iterators to flag
+	int allocs; // how many possible allocations this scenario stands in for
+};
+
+// returned by smartguess function
+struct smartguess_return {
+	smartguess_return() {}
+	int method; // 0=optimization, 1=guess, 2=solve
+	bool empty() { return clearme.empty() && flagme.empty(); }
+	int size() { return clearme.size() + flagme.size(); }
+	std::vector<struct cell *> clearme;
+	std::vector<struct cell *> flagme;
+};
 
 
 
@@ -235,7 +391,7 @@ struct recursion_return {
 
 // just because I'm sick of calling printf_s and fprintf_s with the same args
 // function-like macro that accepts a variable number/type of args, very nifty
-// always prints to the logfile; printing to screen depends on #DEBUG_var
+// always prints to the logfile; printing to screen depends on #SCREEN_var
 // 0=noprint, 1=log only, 2=both
 #define myprintfn(p, fmt, ...) { \
 	fprintf_s(logfile, fmt, __VA_ARGS__); \
@@ -259,21 +415,44 @@ X/Y/mines
 
 // #defines
 // sets the "default values" for each setting
-#define NUM_GAMES_def				1000
+#define NUM_GAMES_def				10000
 #define SIZEX_def					30
 #define SIZEY_def					16
 #define NUM_MINES_def				90
-#define	HUNT_FIND_ZEROS_def			false
-#define RANDOM_USE_SMART_def		true
-// if SPECIFY_SEED_var = 0, will generate a new seed from current time
-#define SPECIFY_SEED_def			0
+#define	FIND_EARLY_ZEROS_def		true
+#define RANDOM_USE_SMART_def		false
+#define VERSION_STRING_def			"v4.8"
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
-#define DEBUG_def					1
+#define SCREEN_def					0
+#define ACTUAL_DEBUG				0
+// if SPECIFY_SEED_var = 0, will generate a new seed from current time
+#define SPECIFY_SEED_def			0
 
-#define RECURSIVE_EFFORT			8	// might increase smartguess accuracy very slightly, but will DRASTICALLY increase time
-#define RECURSIVE_WIDTH_DONT_CHANGE 2	// might increase smartguess accuracy very slightly, but will DRASTICALLY increase time
 
+// after X loops, see if single-cell logic can take over... if not, will resume multicell
+// surprisingly multicell logic seems to consume even more time than the recursive smartguess when this value is high
+#define MULTICELL_LOOP_CUTOFF		3
+// in recursive function, after recursing X layers down, check to see if the chain is fragmented (almost certainly is)
+// this will have no impact on the accuracy of the result, and testing has shown that over many games it has almost no impact on efficiency
+// NOTE: this must be >= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN
+#define CHAIN_RECHECK_DEPTH			8
+// when there are fewer than X mines on the field, begin storing the actual cells flagged to create each answer found by recursion
+// also attempt to solve the puzzle if there is exactly one perfect solution
+// NOTE: this must be <= CHAIN_RECHECK_DEPTH
+#define RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN	8
+// in recursive function, after finding X solutions, stop being so thorough... only test RECURSION_SAFE_WIDTH scenarios at each lvl
+// this comes into play only very rarely even when set as high as 10k
+// with the limiter at 10k, the highest # of solutions found  is 51k, even then the algorithm takes < 1s
+// without the limiter, very rare 'recursion rabbitholes' would find as many as 4.6million solutions to one chain, with very big chains
+#define RECURSION_SAFETY_LIMITER	10000 
+// when the 'safety valve' is tripped, try X scenarios at each level of recursion, no more
+// probably should only be either 2 or 3
+#define RECURSION_SAFE_WIDTH		2 
+// in recursion, when taking the average of all solutions, weigh them by their relative likelihood or just do an unweighted avg
+// this SHOULD decrease algorithm deviation and therefore increase winrate, but instead it somehow INCREASES average deviation and winrate is unchanged
+// doesn't make sense at all >:(
+#define USE_WEIGHTED_AVG			true
 
 
 // global vars
@@ -281,19 +460,20 @@ int NUM_GAMES_var = 0;
 int SIZEX_var = 0;
 int SIZEY_var = 0;
 int NUM_MINES_var = 0;
-bool HUNT_FIND_ZEROS_var = false;
+bool FIND_EARLY_ZEROS_var = false;
 bool RANDOM_USE_SMART_var = false;
 int SPECIFY_SEED_var = 0;
-int DEBUG_var = 0;
+int SCREEN_var = 0;
 
-
-int mines_remain = 0;
+int mines_remaining = 0;
 std::list<struct cell *> zerolist; // zero-list
 std::list<struct cell *> unklist; // unknown-list, hopefully allows for faster "better rand"
 std::vector<std::vector<struct cell>> field; // the actual playing field; overwritten for each game
 FILE * logfile; // file stream to the logfile (globally accessible)
 struct game_stats mygamestats; // stat-tracking variables
 struct run_stats myrunstats; // stat-tracking variables
+struct riskholder myriskholder; // for pod-wise smart guessing
+bool recursion_safety_valve = false; // if recursion goes down a rabbithole, start taking shortcuts
 
 
 
@@ -303,33 +483,48 @@ NOTE: even with "random" hunting, when there are no more zeroes left, it counts 
 
 
 // function declarations
-// big/fundamental actions that deserve to be functions
-inline struct cell * cellptr(int x, int y);
-std::vector<struct cell *> get_adjacent(struct cell * me);
-int reveal(struct cell * me);
-int set_flag(struct cell * me);
-std::vector<struct cell *> filter_adjacent(struct cell * me, cell_state target);
-std::vector<struct cell *> filter_adjacent(std::vector<struct cell *> adj, cell_state target);
-std::vector<std::vector<struct cell *>> find_nonoverlap(std::vector<struct cell *> me_unk, std::vector<struct cell *> other_unk);
-struct cell * rand_from_list(std::list<struct cell *> * fromme);
-struct cell * rand_unk();
-struct recursion_return recursive_allocate_border_mines(std::list<struct risk_adj> adj_list, std::list<struct risk_unk> unk_list, struct cell * target, int current_depth);
+// big/general/fundamental actions that deserve to be functions
+
+inline struct cell * cellptr(int x, int y);														// could be a member function
+std::vector<struct cell *> get_adjacent(struct cell * me);										// could be a member function?
+int reveal(struct cell * me);																	// could be a member function
+int set_flag(struct cell * me);																	// could be a member function
+std::vector<struct cell *> filter_adjacent(struct cell * me, cell_state target);				// could be a member function
+std::vector<struct cell *> filter_adjacent(std::vector<struct cell *> adj, cell_state target);	// could be a member function
+std::vector<std::vector<struct cell *>> find_nonoverlap(std::vector<struct cell *> me_unk, std::vector<struct cell *> other_unk); // general utility
+std::list<std::vector<int>> comb(int K, int N); // general utility
+inline int comb_int(int K, int N); // general utility
+inline int factorial(int x); // general utility
+struct cell * rand_from_list(std::list<struct cell *> * fromme); // general utility
+
+// functions for the recursive smartguess method(s)
+
+struct smartguess_return smartguess();
+struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain);
+
 // small but essential utility functions
-inline std::list<struct risk_unk>::iterator lookup_adj2unk(struct cell * target, std::list<struct risk_unk> * unklist);
-inline std::list<struct risk_adj>::iterator lookup_unk2adj(struct cell * target, std::list<struct risk_adj> * adjlist);
-bool compare_by_position(struct cell * a, struct cell * b);
-bool compare_2(struct risk_unk a, struct risk_unk b);
-bool equivalent_1(struct risk_unk a, struct risk_unk b);
-bool compare_3(struct risk_unk * a, struct risk_unk * b);
-bool equivalent_2(struct risk_unk * a, struct risk_unk * b);
+
+inline bool sort_by_position(struct cell * a, struct cell * b);
+inline int compare_two_cells(struct cell * a, struct cell * b);
+inline int compare_list_of_cells(std::list<struct cell *> a, std::list<struct cell *> b);
+bool sort_scenario_blind(std::list<struct link>::iterator a, std::list<struct link>::iterator b);
+inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+
 // print/display functions
+
 void print_field(int mode, int screen);
 void print_gamestats(int screen);
+
 // mult-cell strategies
+
 int strat_121_cross(struct cell * center);
 int strat_nonoverlap_safe(struct cell * center);
 int strat_nonoverlap_flag(struct cell * center);
-// major structural functions (just for encapsulation)
+
+// major structural functions (just for encapsulation, each is only called once)
+
 inline int parse_input_args(int margc, char *margv[]);
 inline void reset_for_game(std::vector<std::vector<struct cell>> * field_blank);
 inline void generate_new_field();
@@ -339,7 +534,426 @@ inline int play_game();
 
 
 
-// function definitions
+
+
+// member function definitions
+
+
+void run_stats::print_final_stats() {
+	// calculate total time elapsed and format for display
+	std::chrono::milliseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >(
+		std::chrono::system_clock::now().time_since_epoch()
+		);
+	long f = ms.count();
+	int elapsed_ms = int(f - start); // currently in ms
+	double elapsed_sec = double(elapsed_ms) / 1000.; // seconds with a decimal
+
+	double sec = fmod(elapsed_sec, 60.);
+	int elapsed_min = int((elapsed_sec - sec) / 60.);
+	int min = elapsed_min % 60;
+	int hr = (elapsed_min - min) / 60;
+	char timestr[20];
+	sprintf_s(timestr, "%i:%02i:%05.3f", hr, min, sec);
+
+	// print/log overall results (always print to terminal and log)
+	myprintfn(2, "\nDone playing all %i games, displaying results! Time = %s\n\n", NUM_GAMES_var, timestr);
+	myprintfn(2, "MinesweeperSolver version %s\n", VERSION_STRING_def);
+	myprintfn(2, "Games used X/Y/mines = %i/%i/%i\n", SIZEX_var, SIZEY_var, NUM_MINES_var);
+	if (FIND_EARLY_ZEROS_var) {
+		myprintfn(2, "Using 'hunting' method = succeed early (uncover only zeroes until solving can begin)\n");
+	} else {
+		myprintfn(2, "Used 'hunting' method = human-like (can lose at any stage)\n");
+	}
+	if (RANDOM_USE_SMART_var) {
+		myprintfn(2, "Used 'guessing' mode = smartguess (slower but increased winrate)\n");
+		myprintfn(2, "    Smartguess border est. avg deviation:   %+7.4f\n", (smartguess_diff / float(smartguess_attempts)));
+		myprintfn(2, "    Times when recursion got out of hand:%5i\n", smartguess_valves_triggered);
+	} else {
+		myprintfn(2, "Used 'guessing' mode = guess randomly (lower winrate but faster)\n");
+	}
+	myprintfn(2, "Average time per game:                     %8.4f sec\n", (float(elapsed_sec) / float(games_total)));
+	myprintfn(2, "Average 121-cross uses per game:           %5.1f\n", (float(strat_121_total) / float(games_total)));
+	myprintfn(2, "Average nonoverlap-flag uses per game:     %5.1f\n", (float(strat_nov_flag_total) / float(games_total)));
+	myprintfn(2, "Average nonoverlap-safe uses per game:     %5.1f\n", (float(strat_nov_safe_total) / float(games_total)));
+	myprintfn(2, "Average number of guesses per game:        %6.2f + initial guess\n\n", (float(num_guesses_total) / float(games_total)));
+	myprintfn(2, "Total games played:                     %6i\n", games_total);
+	
+	if (games_with_eights != 0) {
+		myprintfn(2, "    Games with 8-adj cells:              %5i\n", games_with_eights);
+	}
+	myprintfn(2, "    Total games won:                     %5i   %5.1f%%    -----\n", games_won, (100. * float(games_won) / float(games_total)));
+	myprintfn(2, "        Games won without guessing:      %5i   %5.1f%%   %5.1f%%\n", games_won_noguessing, (100. * float(games_won_noguessing) / float(games_total)), (100. * float(games_won_noguessing) / float(games_won)));
+	myprintfn(2, "        Games won that required guessing:%5i   %5.1f%%   %5.1f%%\n", games_won_guessing, (100. * float(games_won_guessing) / float(games_total)), (100. * float(games_won_guessing) / float(games_won)));
+	myprintfn(2, "    Total games lost:                    %5i   %5.1f%%    -----\n", games_lost, (100. * float(games_lost) / float(games_total)));
+	myprintfn(2, "        Games lost in the first move(s): %5i   %5.1f%%   %5.1f%%\n", games_lost_beginning, (100. * float(games_lost_beginning) / float(games_total)), (100. * float(games_lost_beginning) / float(games_lost)));
+	myprintfn(2, "        Games lost early      (1-15%%):   %5i   %5.1f%%   %5.1f%%\n", games_lost_earlygame, (100. * float(games_lost_earlygame - games_lost_beginning) / float(games_total)), (100. * float(games_lost_earlygame - games_lost_beginning) / float(games_lost)));
+	myprintfn(2, "        Games lost in midgame (15-85%%):  %5i   %5.1f%%   %5.1f%%\n", games_lost_midgame, (100. * float(games_lost_midgame) / float(games_total)), (100. * float(games_lost_midgame) / float(games_lost)));
+	myprintfn(2, "        Games lost in lategame(85-99%%):  %5i   %5.1f%%   %5.1f%%\n", games_lost_lategame, (100. * float(games_lost_lategame) / float(games_total)), (100. * float(games_lost_lategame) / float(games_lost)));
+	if (games_lost_unexpectedly != 0) {
+		myprintfn(2, "        Games lost unexpectedly:         %5i   %5.1f%%   %5.1f%%\n", games_lost_unexpectedly, (100. * float(games_lost_unexpectedly) / float(games_total)), (100. * float(games_lost_unexpectedly) / float(games_lost)));
+	}
+	myprintfn(2, "\n");
+
+	fflush(logfile);
+}
+
+
+// return the WEIGHTED average of all the contents that are <= mines_remaining
+// also modifies the object by deleting any solutions with answers > mines_remaining
+float podwise_return::avg() {
+	float a = 0; int total_weight = 0;
+	std::list<struct solutionobj>::iterator listit = solutions.begin();
+	while (listit != solutions.end()) {
+		if (listit->answer <= float(mines_remaining)) { 
+			if (USE_WEIGHTED_AVG) {
+				a += listit->answer * listit->allocs;
+				total_weight += listit->allocs;
+			} else {
+				a += listit->answer;
+				total_weight++;
+			}
+			listit++;
+		} else {
+			// erase listit
+			std::list<struct solutionobj>::iterator eraseme = listit;
+			listit++;
+			solutions.erase(eraseme);
+		}
+	}
+	if (total_weight == 0) {
+		myprintfn(2, "ERR: IN AVG, ALL SCENARIOS FOUND ARE TOO BIG\n");
+		// TODO: decide whether to return 0 or mines_remaining
+		return 0.;
+		//return float(mines_remaining);
+	}
+	return (a / float(total_weight));
+}
+// max: if there is a tie, or the solution doesn't represent only one allocations, return pointer to NULL
+struct solutionobj * podwise_return::max() {
+	std::list<struct solutionobj>::iterator solit = solutions.begin();
+	std::list<struct solutionobj>::iterator maxit = solutions.begin(); // the one to return
+	bool tied_for_max = false;
+	for (solit++; solit != solutions.end(); solit++) {
+		if (solit->answer < maxit->answer)
+			continue; // existing max is greater
+		if (solit->answer == maxit->answer)
+			tied_for_max = true; // tied
+		else if(solit->answer > maxit->answer) {
+			tied_for_max = false; maxit = solit;
+		}
+	}
+	if (tied_for_max || (maxit->allocs != 1)) { return NULL; } else { return &(*maxit); }
+}
+// max_val: if there is a tie, return a value anyway
+float podwise_return::max_val() {
+	float retmax = 0.;
+	for (std::list<struct solutionobj>::iterator solit = solutions.begin(); solit != solutions.end(); solit++) {
+		if (solit->answer <= retmax)
+			continue; // existing max is greater
+		if (solit->answer > retmax)
+			retmax = solit->answer;
+	}
+	return retmax;
+}
+// min: if there is a tie, or the solution doesn't represent only one allocations, return pointer to NULL
+struct solutionobj * podwise_return::min() {
+	std::list<struct solutionobj>::iterator solit = solutions.begin();
+	std::list<struct solutionobj>::iterator minit = solutions.begin(); // the one to return
+	bool tied_for_min = false;
+	for (solit++; solit != solutions.end(); solit++) {
+		if (solit->answer > minit->answer)
+			continue; // existing min is lesser
+		if (solit->answer == minit->answer)
+			tied_for_min = true; // tied
+		else if (solit->answer < minit->answer) {
+			tied_for_min = false; minit = solit;
+		}
+	}
+	if (tied_for_min || (minit->allocs != 1)) { return NULL; } else { return &(*minit); }
+}
+// min_val: if there is a tie, return a value anyway
+float podwise_return::min_val() {
+	float retmin = 100000000.;
+	for (std::list<struct solutionobj>::iterator solit = solutions.begin(); solit != solutions.end(); solit++) {
+		if (solit->answer >= retmin)
+			continue; // existing max is greater
+		if (solit->answer < retmin)
+			retmin = solit->answer;
+	}
+	return retmin;
+}
+// total_alloc: sum the alloc values for all solutions in the list
+int podwise_return::total_alloc() {
+	int retval = 0;
+	for (std::list<struct solutionobj>::iterator solit = solutions.begin(); solit != solutions.end(); solit++) {
+		retval += solit->allocs;
+	}
+	return retval;
+}
+//bool remove_solution_if_too_big(const struct solutionobj& val) { return (val.answer > mines_remaining); }
+//// removes all solutions from the list that are too large (is this necessary? is this helpful?)
+//inline void podwise_return::validate() { solutions.remove_if(remove_solution_if_too_big); }
+
+
+// two links are equivalent if they have the same shared_cell and also their shared_roots compare equal
+// needed for remove-by-value
+inline bool link::operator== (const struct link o) const {
+	if((o.link_cell != link_cell) || (linked_roots.size() != o.linked_roots.size()))
+		return false;
+	// if they are the same size...
+	std::list<struct cell *>::const_iterator ait = linked_roots.begin();
+	std::list<struct cell *>::const_iterator bit = o.linked_roots.begin();
+	while (ait != linked_roots.end()) {
+		if (*ait != *bit)
+			return false;
+		ait++; bit++;
+	}
+	// i guess they're identical
+	return true;
+}
+
+// init from root, mines from root, link_cells empty, cell_list from root
+pod::pod(struct cell * new_root) {
+	root = new_root;
+	mines = new_root->effective;
+	links = std::list<struct link>(); // links initialized empty
+	cell_list = filter_adjacent(new_root, UNKNOWN); // find adjacent unknowns
+	chain_idx = -1; // set later
+	cell_list_size = -1; // set later
+}
+// add a link object to my list of links; doesn't modify cell_list, doesn't modify any other pod
+// inserts it into sorted position, so the list of shared_roots will always be sorted
+void pod::add_link(struct cell * shared, struct cell * shared_root) {
+	// search for link... if found, add new root. if not found, create new.
+	std::list<struct link>::iterator link_iter;
+	for (link_iter = links.begin(); link_iter != links.end(); link_iter++) {
+		if (link_iter->link_cell == shared) {
+			// if a match is found, add it to existing
+			link_iter->linked_roots.push_back(shared_root);
+			std::list<struct cell *>::iterator middle = link_iter->linked_roots.end(); middle--;
+			if (link_iter->linked_roots.begin() != middle) {
+				std::inplace_merge(link_iter->linked_roots.begin(), middle, link_iter->linked_roots.end(), sort_by_position);
+			}
+			break;
+		}
+	}
+	if (link_iter == links.end()) {
+		// if match is not found, then create new
+		links.push_back(link(shared, shared_root));
+	}
+}
+// remove the link from this pod. return 0 if it worked, 1 if the link wasn't found
+int pod::remove_link(struct cell * shared, bool isaflag) {
+	std::list<struct link>::iterator link_iter;
+	for (link_iter = links.begin(); link_iter != links.end(); link_iter++) {
+		if (link_iter->link_cell == shared) {
+			// found it!
+			// always reduce size, one way or another
+			if (cell_list_size == 0) { myprintfn(2, "ERR: REMOVING LINK WHEN SIZE ALREADY IS ZERO\n"); } // DEBUG
+			if (cell_list_size > 0) {
+				cell_list_size--;
+			} else {
+				int s = cell_list.size();
+				int i = 0;
+				for (i = 0; i < s; i++) {
+					if (cell_list[i] == shared) {
+						// when found, delete it by copying the end onto it
+						if (i != (s - 1)) { cell_list[i] = cell_list.back(); }
+						cell_list.pop_back();
+						break;
+					}
+				}
+				if(i == s) { myprintfn(2, "ERR: CAN'T FIND LINK TO REMOVE IN CELL_LIST\n"); } // debug
+			}
+			if (isaflag) { mines--; }	// only sometimes reduce flags
+			links.erase(link_iter);
+			return 0;
+		}
+	}
+	// note: won't always find the link, in that case just 'continue'
+	return 1;
+}
+
+// find all possible ways to allocate mines in the links/internals
+std::list<struct scenario> pod::find_scenarios() {
+	// return a list of scenarios,
+	// where each scenario is a list of ITERATORS which point to my links
+	std::list<struct scenario> retme;
+	// determine what values K to use, iterate over the range
+	int start = mines - (size() - links.size());
+	if (start < 0) { start = 0; } // greater of start or 0
+	int end = (mines < links.size() ? mines : links.size()); // lesser of mines/links
+	for (int i = start; i <= end; i++) {
+		// allocate some number of mines among the link cells
+		std::list<std::vector<int>> ret = comb(i, links.size());
+		// turn the ints into iterators
+		std::list<std::list<std::list<struct link>::iterator>> buildme; // where it gets put into
+		for (std::list<std::vector<int>>::iterator retit = ret.begin(); retit != ret.end(); retit++) {
+			// for each scenario...
+			buildme.push_back(std::list<std::list<struct link>::iterator>()); // push an empty list of iterators
+			for (int k = 0; k < i; k++) { // each scenario will have length i
+				buildme.back().push_back(get_link((*retit)[k]));
+			}
+			// sort the scenario blind-wise so that equiv links are adjacent
+			buildme.back().sort(sort_scenario_blind);
+		}
+
+		// now 'ret' has been converted to 'buildme', list of sorted lists of link-list-iterators
+		buildme.sort(sort_list_of_scenarios);
+		// now I have to do my own uniquify-and-also-build-scenario-objects section
+		std::list<struct scenario> retme_sub;
+		std::list<std::list<std::list<struct link>::iterator>>::iterator buildit = buildme.begin();
+		std::list<std::list<std::list<struct link>::iterator>>::iterator prevlist = buildit;
+		int c = comb_int((mines - i), (size() - links.size()));
+		retme_sub.push_back(scenario((*buildit), c));
+
+		for (buildit++; buildit != buildme.end(); buildit++) {
+			if (compare_list_of_scenarios(*prevlist, *buildit) == 0) {
+				// if they are the same, revise the previous entry
+				retme_sub.back().allocs += c;
+			} else {
+				// if they are different, add as a new entry
+				retme_sub.push_back(scenario((*buildit), c));
+			}
+			prevlist = buildit;
+		}
+		// add retme_sub to the total string retme
+		retme.insert(retme.end(), retme_sub.begin(), retme_sub.end());
+	}
+	return retme;
+}
+
+// when given an int, retrieve the link at that index
+// PRIVATE! for internal use only
+std::list<struct link>::iterator pod::get_link(int l) {
+	std::list<struct link>::iterator link_iter = links.begin();
+	for (int i = 0; i < l; i++) { link_iter++; }
+	return link_iter;
+}
+
+link::link(struct cell * shared, struct cell * shared_root) {
+	link_cell = shared;
+	linked_roots.push_back(shared_root);
+}
+
+chain::chain() {
+	podlist = std::list<struct pod>(); // explicitly init as an empty list
+}
+// find a pod with the given root, return iterator so it's easier to delete or whatever
+std::list<struct pod>::iterator chain::root_to_pod(struct cell * linked_root) {
+	if (linked_root == NULL)
+		return podlist.end();
+	std::list<struct pod>::iterator pod_iter;
+	for (pod_iter = podlist.begin(); pod_iter != podlist.end(); pod_iter++) {
+		if (pod_iter->root == linked_root)
+			return pod_iter;
+	}
+	// I wanna return NULL but that's not an option...
+	// is this line possible? is it not? I CAN'T REMEMBER
+	return podlist.end(); // note this actually points to the next open position; there's no real element here!
+}
+// returns iterator to the fth pod
+std::list<struct pod>::iterator chain::int_to_pod(int f) {
+	if (f > podlist.size()) { return podlist.end(); }
+	std::list<struct pod>::iterator iter = podlist.begin();
+	for (int i = 0; i < f; i++) { iter++; }
+	return iter;
+}
+// RECURSE and mark connected chains/islands... should only be called outside of recursion, when it is a "master chain"
+// assumes that links have already been set up, duplicates removed, and subtraction performed, etc
+// returns the number of disjoint chains found (returns 4 if chains have id 0/1/2/3) (returns 1 if already one contiguous chain, id 0)
+int chain::identify_chains() {
+	// first, reset any chain indices (to allow for calling it again inside recursion)
+	for (std::list<struct pod>::iterator pod_iter = podlist.begin(); pod_iter != podlist.end(); pod_iter++) {
+		pod_iter->chain_idx = -1;
+	}
+	// then, do the actual deed
+	int next_chain_idx = 0;
+	for (std::list<struct pod>::iterator pod_iter = podlist.begin(); pod_iter != podlist.end(); pod_iter++) {
+		if (pod_iter->chain_idx == -1) {
+			identify_chains_recurse(next_chain_idx, &(*pod_iter));
+			next_chain_idx++;
+		}
+	}
+	return next_chain_idx;
+}
+// PRIVATE! internal use only
+void chain::identify_chains_recurse(int idx, struct pod * me) {
+	if (me->chain_idx != -1) {
+		assert(me->chain_idx == idx); // if its not -1 then it damn well better be idx
+		return; // this pod already marked by something (hopefully this same recursion call)
+	}
+	me->chain_idx = idx; // paint it
+	for (std::list<struct link>::iterator linkit = me->links.begin(); linkit != me->links.end(); linkit++) {
+		// for each link object 'linkit' in me...
+		for (std::list<struct cell *>::iterator rootit = linkit->linked_roots.begin(); rootit != linkit->linked_roots.end(); rootit++) {
+			// for each root pointer 'rootit' in linkit...
+			// ...get the pod that is linked...
+			struct pod * linked_pod = &(*(root_to_pod(*rootit)));
+			// ...and recurse on that pod with the same index
+			identify_chains_recurse(idx, linked_pod);
+		}
+	}
+	return;
+}
+// after calling identify_chains, sort the pods into a vector of chains
+// if 'reduce' is true, then also turn "cell_list" into a simple number, and clear the actual list (only for before recursion!)
+std::vector<struct chain> chain::sort_into_chains(int r, bool reduce) {
+	std::vector<struct chain> chain_list; // where i'll be sorting them into
+	std::vector<struct cell *> blanklist = std::vector<struct cell *>();
+	chain_list.resize(r, chain());
+	for (std::list<struct pod>::iterator podit = podlist.begin(); podit != podlist.end(); podit++) {
+		int v = podit->chain_idx;
+		chain_list[v].podlist.push_back(*podit);
+		if (reduce) {
+			chain_list[v].podlist.back().cell_list_size = chain_list[v].podlist.back().cell_list.size();
+			chain_list[v].podlist.back().cell_list = blanklist;
+		}
+	}
+	return chain_list;
+}
+
+// constructor
+riskholder::riskholder(int x, int y) {
+	struct riskcell asdf2 = riskcell(); // needed for using the 'resize' command
+	std::vector<struct riskcell> asdf = std::vector<struct riskcell>(); // init empty
+	asdf.resize(y, asdf2);										// fill it with copies of asdf2
+	asdf.shrink_to_fit();												// set capacity exactly where i want it, no bigger
+	riskarray = std::vector<std::vector<struct riskcell>>();// init empty
+	riskarray.resize(x, asdf);						// fill it with copies of asdf
+	riskarray.shrink_to_fit();								// set capacity exactly where i want it, no bigger
+}
+// iterate over itself and return the stuff tied for lowest risk
+struct riskreturn riskholder::findminrisk() {
+	std::list<struct cell *> minlist = std::list<struct cell *>();
+	float minrisk = 100.;
+	for (int m = 0; m < SIZEX_var; m++) {
+		for (int n = 0; n < SIZEY_var; n++) {
+			float j = finalrisk(m, n);
+			if ((j == -1.) || (j > minrisk))
+				continue;
+			if (j < minrisk) {
+				minrisk = j;
+				minlist.clear();
+			}
+			minlist.push_back(&field[m][n]);
+		}
+	}
+	struct riskreturn retme = riskreturn(minrisk, &minlist);
+	return retme;
+}
+
+
+
+
+
+
+
+
+
+
+// other function definitions
+
 
 // cellptr: if the given X and Y are valid, returns a pointer to the cell; otherwise returns NULL
 // during single-cell and multi-cell iterations, just use &field[x][y] because the X and Y are guaranteed not off the edge
@@ -370,19 +984,21 @@ std::vector<struct cell *> get_adjacent(struct cell * me) {
 }
 
 
-// reveal: recursive function, returns -1 if loss or the # of non-zero cells uncovered otherwise
+// reveal: recursive function, returns -1 if loss or the # of cells revealed otherwise
 // if it's a zero, remove it from the zero-list and recurse
 // doesn't complain if you give it a null pointer
 int reveal(struct cell * revealme) {
 	if (revealme == NULL) return 0;
 	if (revealme->status != UNKNOWN)
 		return 0; // if it is flagged, satisfied, or already visible, then do nothing. will happen often.
-	revealme->status = VISIBLE;
+	
 	unklist.remove(revealme);
 	if (revealme->value == MINE) {
 		// lose the game, handled wherever calls here
+		revealme->status = VISIBLE;
 		return -1;
 	} else if(revealme->effective == 0) {
+		revealme->status = SATISFIED;
 		// if it's a zero, recurse
 		// also recurse if the cell has already been satisfied; not just true zeroes
 		if(revealme->value == 0) {
@@ -402,9 +1018,10 @@ int reveal(struct cell * revealme) {
 				retme += t;
 			}
 		}
-		return retme;
+		return retme + 1; // return the number of cells revealed
 	} else {
 		// if its an adjacency number, return 1
+		revealme->status = VISIBLE;
 		return 1;
 	}
 	return 0; // dangling return just in case
@@ -416,19 +1033,18 @@ int reveal(struct cell * revealme) {
 // if not an actual mine, dump a bunch of info and abort
 int set_flag(struct cell * flagme) {
 	if (flagme->status != UNKNOWN) {
-		int x = 5 + 2; // always have debug breakpoint here
+		return 0;
 	}
-	assert(flagme->status == UNKNOWN); // if flagged/visible/satisfied, then why was this called? need to do a replay
 
 	flagme->status = FLAGGED;
 	unklist.remove(flagme);
 
 	// check if it flagged a non-mine square, and if so, why?
-	// use assert() statement to dump a stack trace? doesn't dump a trace :(
 	if (flagme->value != MINE) {
-		int x = 5 + 2; // always have debug breakpoint here
+		myprintfn(2, "ERR: FLAGGED A NON-MINE CELL\n");
+		//assert(flagme->value == MINE);
+		//system("pause");
 	}
-	assert(flagme->value == MINE);
 
 	// reduce "effective" values of everything around it, whether its visible or not
 	std::vector<struct cell *> adj = get_adjacent(flagme);
@@ -438,24 +1054,24 @@ int set_flag(struct cell * flagme) {
 	}
 
 	// decrement the remaining mines
-	mines_remain -= 1;
-	if (mines_remain == 0) {
+	mines_remaining -= 1;
+	if (mines_remaining == 0) {
 		//try to validate the win: every mine is flagged, and every not-mine is not-flagged
 		for (int y = 0; y < SIZEY_var; y++) {for (int x = 0; x < SIZEX_var; x++) { // iterate over each cell
 			struct cell * v = &field[x][y];
 			if (v->value == MINE) {
-				if (v->status != FLAGGED) {
-					int x = 5 + 2; // always have debug breakpoint here
-				}
 				// assert that every mine is flagged
-				assert(v->status == FLAGGED);
+				if (v->status != FLAGGED) {
+					myprintfn(2, "ERR: IN WIN VALIDATION, FOUND AN UNFLAGGED MINE\n");
+					assert(v->status == FLAGGED);
+				}
 			}
 			if (v->value != MINE) {
-				if (v->status == FLAGGED) {
-					int x = 5 + 2; // always have debug breakpoint here
-				}
 				// assert that every not-mine is not-flagged
-				assert(v->status != FLAGGED);
+				if (v->status == FLAGGED) {
+					myprintfn(2, "ERR: IN WIN VALIDATION, FOUND A FLAGGED NOT-MINE\n");
+					assert(v->status != FLAGGED);
+				}
 			}
 		}}
 		// officially won!
@@ -489,13 +1105,13 @@ std::vector<struct cell *> filter_adjacent(std::vector<struct cell *> adj, cell_
 }
 
 
-// is_subset: compare two cells' adj unknown vectors, and return everything adj to ME but not adj to OTHER
-// the shortcut comparison can be done outside, comparing the sizes of the two to eliminate half of comparisons
-//if (me_unk.size() > other_unk.size()) {return false;}
+// find_nonoverlap: takes two vectors of cells, returns (first_vect_unique) (second_vect_unique) (overlap)
 std::vector<std::vector<struct cell *>> find_nonoverlap(std::vector<struct cell *> me_unk, std::vector<struct cell *> other_unk) {
+	std::vector<struct cell *> overlap = std::vector<struct cell *>();
 	for (int i = 0; i != me_unk.size(); i++) { // for each cell in me_unk...
 		for (int j = 0; j != other_unk.size(); j++) { // ... compare against each cell in other_unk...
 			if (me_unk[i] == other_unk[j]) {// ... until there is a match!
+				overlap.push_back(me_unk[i]);
 				me_unk.erase(me_unk.begin() + i);
 				other_unk.erase(other_unk.begin() + j); // not sure if this makes it more or less efficient...
 				i--; // need to counteract the i++ that happens in outer loop
@@ -506,13 +1122,14 @@ std::vector<std::vector<struct cell *>> find_nonoverlap(std::vector<struct cell 
 	std::vector<std::vector<struct cell *>> retme;
 	retme.push_back(me_unk);
 	retme.push_back(other_unk);
+	retme.push_back(overlap);
 	return retme;
 }
 
 
 // print: either 1) fully-revealed field, 2) in-progress field as seen by human, 3) in-progress field showing 'effective' values
 // borders made with +, zeros: blank, adjacency (or effective): number, unknown: -, flag or mine: *
-// when DEBUG is low enough, skipped entirely (doesn't even print to log)
+// when SCREEN_var is low enough, skipped entirely (doesn't even print to log)
 void print_field(int mode, int screen) {
 	if (screen > 0) {
 		if (mode == 1) {
@@ -571,11 +1188,57 @@ void print_gamestats(int screen) {
 	myprintfn(screen, "Transition map: %s\n", mygamestats.trans_map.c_str());
 	myprintfn(screen, "121-cross hits: %i, nonoverlap-safe hits: %i, nonoverlap-flag hits: %i\n",
 		mygamestats.strat_121, mygamestats.strat_nov_safe, mygamestats.strat_nov_flag);
-	myprintfn(screen, "Cells hunted: %i, cells guessed: %i\n",
-		mygamestats.times_hunting, mygamestats.times_guessing);
-	myprintfn(screen, "Flags placed: %i / %i\n\n\n", NUM_MINES_var - mines_remain, NUM_MINES_var);
+	myprintfn(screen, "Cells guessed: %i\n", mygamestats.times_guessing);
+	myprintfn(screen, "Flags placed: %i / %i\n\n\n", NUM_MINES_var - mines_remaining, NUM_MINES_var);
 	fflush(logfile);
 }
+
+
+// determine all ways to choose K from N, return a VECTOR of VECTORS of INTS
+// result is a list of lists of indices from 0 to N-1
+// ex: comb(3,5)
+std::list<std::vector<int>> comb(int K, int N) {
+	// thanks to some dude on StackExchange
+	std::list<std::vector<int>> buildme;
+	if (N == 0) 
+		return buildme;
+	static std::vector<bool> bitmask = std::vector<bool>();
+	bitmask.resize(K, 1);	// a vector of K leading 1's...
+	bitmask.resize(N, 0);	// ... followed by N-K trailing 0's, total length = N
+							// permutate the string of 1s and 0s and see what happens
+	do {
+		buildme.push_back(std::vector<int>(K,-1)); // start a new entry, know it will have size K
+		int z = 0;
+		//buildme->back().reserve(K); // either just the same efficiency, or slightly better
+		for (int i = 0; i < N; ++i) {// for each index, is the bit at that index a 1? if yes, choose that item
+			if (bitmask[i]) { buildme.back()[z] = i; z++; }
+		}
+	} while (std::prev_permutation(bitmask.begin(), bitmask.end()));
+	bitmask.clear(); //hopefully doesn't reduce capacity, that would undermine the whole point of static memory!
+	return buildme;
+}
+
+// return the # of total combinations you can choose K from N, simple math function
+// currently only used for extra debug info
+// = N! / (K! * (N-K)!)
+inline int comb_int(int K, int N) {
+	return factorial(N) / (factorial(K) * factorial(N - K));
+}
+
+inline int factorial(int x) {
+	if (x < 2) return 1;
+	switch (x) {
+	case 2: return 2;
+	case 3: return 6;
+	case 4: return 24;
+	case 5: return 120;
+	case 6: return 720;
+	case 7: return 5040;
+	case 8: return 40320;
+	default: return -1;
+	}
+}
+
 
 // return a random cell from the provided list, or NULL if the list is empty
 struct cell * rand_from_list(std::list<struct cell *> * fromme) {
@@ -593,336 +1256,507 @@ struct cell * rand_from_list(std::list<struct cell *> * fromme) {
 
 
 
-// EITHER return an unknown cell (for revealing) chosen by unintelligent pure random selection...
-// ...OR return an unknown cell (for revealing) chosen by laboriously determining the % risk of each unknown cell
-struct cell * rand_unk() {
-	if (unklist.empty())
-		return NULL;
-	if (RANDOM_USE_SMART_var) {
-		/*
-		have access to accurate unklist, might save some time?
-		probably need to iterate over the field and build an adjacency-list anyway tho
-		need to have some special struct that point to a cell, but also has the % risk and the adj cells it would satisfy???
-
-		1. sort unknown cells into "border" and "interior"
-		2. calculating risk % for each border cell is easy, simply the max of the risk from each adj cell
-			TODO: consider instead using average of risk from each adj cell?
-			iterate over each adj cell, calculate risk, apply to all surrounding unknowns
-		3. to find risk % for interior cells, need to know number of mines not "accounted for" in the border
-		4. must calculate (minimal) and (crowded) allocations of mines in the border cells
-			NEW: better results to sorta split the difference and take the maximum result of the (minimal) allocation
-			interior risk = (total mines - mines border cells) / (# interior)
-			TODO: if there is only one allocation of mines found, apply it immediately?
-			would probably be very slow
-		*/
-		std::list<struct risk_adj> adj_list;
-		std::list<struct risk_unk> border_list;
-		std::list<struct cell *> interior_list = unklist;
-
-		// iterate, get visible + unclassified unknown, visible->unk means remove from general, add to border
-		for (int y = 0; y < SIZEY_var; y++) {for (int x = 0; x < SIZEX_var; x++) { // iterate over each cell
-			if (field[x][y].status == VISIBLE) {
-				adj_list.push_back(risk_adj(&field[x][y]));
-				std::vector<struct cell *> unk = filter_adjacent(&field[x][y], UNKNOWN); // find all the unknown around this adj
-				for (int i = 0; i < unk.size(); i++) {
-					interior_list.remove(unk[i]); // remove from interior_list...
-					border_list.push_front(risk_unk(unk[i])); // ...and add to border_list! will create duplicates, oh well
-				}
-			}
-		}}
-		border_list.sort(compare_2); // need to sort by the x/y position
-		border_list.unique(equivalent_1); // remove duplicates
+// laboriously determine the % risk of each unknown cell and choose the one with the lowest risk to return
+// can completely solve the puzzle, too; therefore it can return multiple cells to clear or to flag
+struct smartguess_return smartguess() {
+	struct smartguess_return results;
+	// ROADMAP
+	// 1)build the pods from visible, allow for dupes, no link cells yet. is stored in the "master chain". don't modify interior_unk yet
+	// 2)iterate over pods, check for dupes and subsets (call find_nonoverlap on each pod with root in 5x5 around my root)
+		// note if a pod becomes 100% or 0%, loop until no changes happen
+	// 3)if any pods became 100% or 0%, return with those
+	// 4)iterate again, removing pod contents from 'interior_unk'. Done here so there are fewer dupe pods, less time searching thru interior_unk
 		
-		// don't need to store the interior_list risk data, it's all the same... just say (one of these chosen at random) if its best
-		// now adj_list, border_list, and interior_list have the right contents... but adj_ and border_ still need cross-linked
-		// border_list
-		for (std::list<struct risk_unk>::iterator itunk = border_list.begin(); itunk != border_list.end(); itunk++) {
-			std::vector<struct cell *> temp = filter_adjacent(itunk->me, VISIBLE);
-			temp.shrink_to_fit();
-			itunk->Nlist = std::list<struct cell *>(temp.begin(), temp.end());
+	// if interior_unk is empty, then skip the following:
+	// 5)iterate again, building links to anything within 5x5(only for ME so there are no dupes)
+	// 6)iterate/recurse, identifying chains
+	// iterate AGAIN, separating them into a VECTOR of chains (set size beforehand so i can index into the vector)
+		// at the same time, turn "cell_list" into a simple number, and clear the actual list???
+		// create an 'empty list' with size=0, capacity=0, and copy it onto each cell_list so recursing uses less memory
+	// 7)for each chain, recurse (chain is only argument) and get back max/min for that chain
+	// !!!!!!!!!!!!!!!!!!!!!
+	// sum all the max/min, concat to # of mines remaining, average the two (perhaps do something fancier? dunno)
+	// 8)calculate interior_risk
+
+	// 9)iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
+	// 10)find the minimum risk from anything in the border cells (pods) and any cells with that risk
+	// 11)decide between border and interior, call 'rand_from_list' and return
+
+
+	struct chain master_chain; // list of pods
+	std::list<struct cell *> interior_list = unklist;
+
+	// step 1: iterate over field, get 'visible' cells, use them as roots to build pods.
+	// non-optimized: includes duplicates, before pod-subtraction. interior_unk not yet modified.
+	// pods are added to the chain already sorted (reading order by root), as are their cell_list contents
+	for (int y = 0; y < SIZEY_var; y++) {for (int x = 0; x < SIZEX_var; x++) { // iterate over each cell
+		if (field[x][y].status == VISIBLE) {
+			master_chain.podlist.push_back(pod(&field[x][y])); // constructor gets adj unks for the given root
 		}
-		// adj_list
-		for (std::list<struct risk_adj>::iterator itadj = adj_list.begin(); itadj != adj_list.end(); itadj++) {
-			// for each risk_adj 'itadj' in adj_list...
-			std::vector<struct cell *> Nunk = filter_adjacent(itadj->me, UNKNOWN);
-			Nunk.shrink_to_fit();
-			itadj->Nlist = std::list<struct cell *>(Nunk.begin(), Nunk.end());
-		}
+	}}
 
-		// now adj_list and border_list are cross-linked and everything is ready to recurse
-		// Nlist in adj_list point at the cells that match the ones in border_list
-		// Nlist in border_list point at the cells that match the ones in adj_list
-		// beginning the recursion about halfway thru a recursive function call (very ugly but oh well)
-
-		// recursion strategy: place a hypothetical mine at the border cell that would satisfy the most adjacency cells, then repeat
-		//                     starting at a most-crowded cell is referred to as 'underestimate'
-		//                     trying multiple different "paths" if multiple border cells are tied for size
-		// note: if the start point is the border cell that would satisfy the FEWEST adjacency cells, then a 'overestimate' can be found...
-		//       ... but it is much easier to optimize the 'underestimate' paths for time
-		// note: turns out that taking the MAXIMUM of the 'underestimate' strategy produces a result on average slightly closer to the hidden 
-		//       true number of mines in the border cells than taking the MINIMUM of the 'underestimate' strategy
-		// i'm curious how the MINIMUM of the 'overestimate' strategy would compare but don't want to bother writing it
-
-		float interior_risk = 100;
-		if (!interior_list.empty()) {
-			std::list<struct risk_unk *> maxlist;
-			int maxsize = 0;
-			// for each risk_adj in adj_list, look through the Nlist at all risk_unk, and look at the size of THEIR Nlist
-			// collect everything tied for max size
-			for (std::list<struct risk_adj>::iterator itadj = adj_list.begin(); itadj != adj_list.end(); itadj++) {
-				// for each risk_adj 'itadj' in adj_list...
-				for (std::list<struct cell *>::iterator whichcell = itadj->Nlist.begin(); whichcell != itadj->Nlist.end(); whichcell++) {
-					// for each cell* 'whichcell' in Nlist of itadj...
-					// ... turn the cell* into a risk_unk 'p' in unk_list
-					std::list<struct risk_unk>::iterator p = lookup_adj2unk(*whichcell, &border_list);
-					int j = p->Nlist.size();
-					if (j == maxsize) {
-						maxlist.push_back(&(*p));
-					} else if (j > maxsize) {
-						maxsize = j;
-						maxlist.clear();
-						maxlist.push_back(&(*p));
+	// step 2: iterate over pods, check for dupes and subsets (call find_nonoverlap on each pod with root in 5x5 around my root)
+	// note if a pod becomes 100% or 0%... repeat until no changes are done.
+	// when deleting pods, what remains will still be in sorted order
+	bool changes;
+	do {
+		changes = false;
+		for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
+			// to find pods that may be dupes or subsets, use one of the following methods:
+			for (int b = -2; b < 3; b++) {for (int a = -2; a < 3; a++) {
+				if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
+				struct cell * other = cellptr(podit->root->x + a, podit->root->y + b);
+				if ((other == NULL) || (other->status != VISIBLE)) { continue; } // only examine the visible cells
+				std::list<struct pod>::iterator otherpod = master_chain.root_to_pod(other);
+				if (otherpod == master_chain.podlist.end()) { continue; }
+				// for each pod 'otherpod' with root within 5x5 found...
+				std::vector<std::vector<struct cell *>> n = find_nonoverlap(podit->cell_list, otherpod->cell_list);
+				if (n[0].empty()) {
+					changes = true;
+					if (n[1].empty()) {
+						// is it a total duplicate? if yes, delete OTHER (not me), OTHER is somewhere later in the list
+						master_chain.podlist.erase(otherpod);
+					} else {
+						// if podit has no uniques but otherpod does, then podit is subset of otherpod... SUBTRACT from otherpod, leave podit unchanged
+						otherpod->mines -= podit->mines; otherpod->cell_list = n[1];
+						// if a pod would become 100 or 0, otherpod would do it here. is it possible to get dupes if I check it here?...
+						float z = otherpod->risk();
+						if (z == 0.) {
+							// add all cells in otherpod to resultlist[0]
+							results.clearme.insert(results.clearme.end(), otherpod->cell_list.begin(), otherpod->cell_list.end());
+						} else if (z == 100.) {
+							// add all cells in otherpod to resultlist[1]
+							results.flagme.insert(results.flagme.end(), otherpod->cell_list.begin(), otherpod->cell_list.end());
+						}
 					}
 				}
-			}
-			maxlist.sort(compare_3); maxlist.unique(equivalent_2);
+			}}
+				
+		} // end for each pod
+	} while (changes);
 
-			// for each risk_unk* in maxlist, recurse with the current adj_list and unk_list using the cell* from the selected risk_unk as the target
-			//int minret = 100;
-			int maxret = 0;
-			if (maxsize == 1) {
-				// if maxsze==1, then each unk it might use as a target only satisfies one adj cell. So, the order doesn't matter at all!
-				// minret = the sum of the 'eff' values for all remaining risk_adj
-				//minret = 0;
-				for (std::list<struct risk_adj>::iterator itadj = adj_list.begin(); itadj != adj_list.end(); itadj++) {
-					//minret += itadj->eff; 
-					maxret += itadj->eff;
+	// step 3: if any pods were found to be 100 or 0 when optimizing, just return them now
+	if (!results.empty()) {
+		if(ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, optimization found %i clear and %i flag\n", results.clearme.size(), results.flagme.size());
+		results.method = 0;
+		return results;
+	}
+
+	// step 4: now that master_chain is refined, remove pod contents (border unk) from interior_unk
+	// will still have some dupes (link cells) but much less than if I did this earlier
+	for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
+		for (int i = 0; i < podit->size(); i++) {
+			interior_list.remove(podit->cell_list[i]); // remove from interior_list by value (find and remove)
+		}
+	}
+
+	float interior_risk = 150.;
+	if (!interior_list.empty() || (mines_remaining <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN)) {
+		// step 5: iterate again, building links to anything within 5x5(only set MY links)
+		for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
+			for (int b = -2; b < 3; b++) {for (int a = -2; a < 3; a++) {
+				if (a == 0 && b == 0) { continue; } // skip myself BUT INCLUDE THE CORNERS
+				struct cell * other = cellptr(podit->root->x + a, podit->root->y + b);
+				if ((other == NULL) || (other->status != VISIBLE)) { continue; } // only examine the visible cells
+				std::list<struct pod>::iterator otherpod = master_chain.root_to_pod(other);
+				if (otherpod == master_chain.podlist.end()) { continue; } // some pods will have been optimized away
+				// for each pod 'otherpod' with root within 5x5 found...
+				std::vector<std::vector<struct cell *>> n = find_nonoverlap(podit->cell_list, otherpod->cell_list);
+				// ... only create links within podit!
+				for (int i = 0; i < n[2].size(); i++) {
+					podit->add_link(n[2][i], otherpod->root);
 				}
-			} else {
-				for (std::list<struct risk_unk *>::iterator itmax = maxlist.begin(); itmax != maxlist.end(); itmax++) {
-					struct recursion_return r = recursive_allocate_border_mines(adj_list, border_list, (*itmax)->me, 1);
-					//if (r.minret < minret) { minret = r.minret; }
-					if (r.maxret > maxret) { maxret = r.maxret; }
-					// don't limit the recursive width here... at the highest level (this) i want to try all start points
+			}}
+		}
+
+		// step 6: identify chains and sort the pods into a VECTOR of chains... 
+		// at the same time, turn "cell_list" into a simple number, and clear the actual list so it uses less memory while recursing
+		int numchains = master_chain.identify_chains();
+		// if there are only a few mines left, then don't eliminate the cell_list contents
+		bool reduce = (mines_remaining > RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN);
+		std::vector<struct chain> listofchains = master_chain.sort_into_chains(numchains, reduce);
+
+		// step 7: for each chain, recurse (depth, chain are only arguments) and get back list of answer allocations
+		// handle the multiple podwise_retun objects, just sum their averages
+		if(ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, # primary chains = %i \n", listofchains.size());
+		float border_allocation = 0;
+		std::vector<struct podwise_return> retholder = std::vector<struct podwise_return>(numchains, podwise_return());
+		for (int s = 0; s < numchains; s++) {
+			recursion_safety_valve = false; // reset the flag for each chain
+			struct podwise_return asdf = podwise_recurse(CHAIN_RECHECK_DEPTH, listofchains[s]);
+			border_allocation += asdf.avg();
+			if (mines_remaining <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) { retholder[s] = asdf; }
+			if (ACTUAL_DEBUG || recursion_safety_valve) myprintfn(2, "DEBUG: in smart-guess, chain %i with %i pods found %i solutions\n", s, listofchains[s].podlist.size(), asdf.size());
+			if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, chain %i eliminated %.3f%% of allocations as redundant\n", s, (100. * asdf.efficiency()));
+			myrunstats.smartguess_valves_triggered += recursion_safety_valve;
+		}
+
+
+		// step 8: if near the endgame, check if any solutions fit perfectly
+		if (mines_remaining <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) {
+			float minsum = 0; float maxsum = 0;
+			for (int a = 0; a < numchains; a++) { minsum += retholder[a].min_val(); maxsum += retholder[a].max_val(); }
+
+			if (minsum == mines_remaining) {
+				// int_list is safe
+				results.clearme.insert(results.clearme.end(), interior_list.begin(), interior_list.end());
+				// for each chain, get the minimum solution object (if there is only one), and if it has only 1 allocation, then apply it as flags
+				for (int a = 0; a < numchains; a++) {
+					struct solutionobj * minsol = retholder[a].min();
+					if (minsol != NULL)
+						results.flagme.insert(results.flagme.end(), minsol->solution_flag.begin(), minsol->solution_flag.end());
+				}
+			} else if ((maxsum + interior_list.size()) == mines_remaining) {
+				// int_list is all mines
+				results.flagme.insert(results.flagme.end(), interior_list.begin(), interior_list.end());
+				// for each chain, get the maximum solution object (if there is only one), and if it has only 1 allocation, then apply it
+				for (int a = 0; a < numchains; a++) {
+					struct solutionobj * maxsol = retholder[a].max();
+					if (maxsol != NULL)
+						results.flagme.insert(results.flagme.end(), maxsol->solution_flag.begin(), maxsol->solution_flag.end());
 				}
 			}
+			if (!results.empty()) {
+				if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, found a definite solution!\n");
+				results.method = 2;
+				return results;
+			}
+		}
 
-			// just some sanity-checking stuff
-			//if (border_list.empty()) { minret = 0; } // if border_list is empty the loops won't run, so this is a adequate solution
-			//if (minret > mines_remain) { minret = mines_remain; }
-			if (maxret > mines_remain) { maxret = mines_remain; }
 
+
+		// step 9: calculate interior_risk, do statistics things
+
+		// calculate the risk of a mine in any 'interior' cell (they're all the same)
+		if (interior_list.empty())
+			interior_risk = 150.;
+		else {
 
 			////////////////////////////////////////////////////////////////////////
-			// DEBUG STUFF
+			// DEBUG/STATISTICS STUFF
 			// question: how accurate is the count of the border mines? are the limits making the algorithm get a wrong answer?
-			// answer: compare 'minret' with a total omniscient count of the mines in the border cells
-			int bordermines = 0;
-			for (std::list<struct risk_unk>::iterator itunk = border_list.begin(); itunk != border_list.end(); itunk++) {
-				if (itunk->me->value == MINE)
-					bordermines++;
+			// answer: compare 'border_allocation' with a total omniscient count of the mines in the border cells
+			// note: easier to find border mines by (bordermines) = (totalmines) - (interiormines)
+			int interiormines = 0;
+			for (std::list<struct cell *>::iterator cellit = interior_list.begin(); cellit != interior_list.end(); cellit++) {
+				if ((*cellit)->value == MINE)
+					interiormines++;
 			}
+			int bordermines = mines_remaining - interiormines;
 
-			//myprintfn(2, "DEBUG: in smart-guess function, minret/maxret/bordermines = %i / %i / %i\n", minret, maxret, bordermines);
+			if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, border_avg/ceiling/border_actual = %.3f / %i / %i\n", border_allocation, mines_remaining, bordermines);
+			// TODO: change this (and printout at end) to only accumulate when the difference is not 0? would ignore many early-game guessing things
 			myrunstats.smartguess_attempts++;
-			//myrunstats.smarguess_minret_diff += (minret - bordermines); // accumulating a negative number
-			myrunstats.smarguess_maxret_diff += (maxret - bordermines); // accumulating a less-negative number
+			myrunstats.smartguess_diff += (border_allocation - float(bordermines)); // accumulating a less-negative number
 			////////////////////////////////////////////////////////////////////////
 
 
-			// calculate the risk of a mine in any 'interior' cell (they're all the same)
-			interior_risk = float(mines_remain - maxret) / float(interior_list.size());
-
+			if (border_allocation > mines_remaining) { border_allocation = mines_remaining; }
+			interior_risk = (float(mines_remaining) - border_allocation) / float(interior_list.size()) * 100.;
 		}
 
-		// now the interior_risk has been calculated to some accuracy
+	} // end of finding-likely-border-mine-allocation-to-determine-interior-risk section
 
-		// calculate the risk of a mine in any border cell
-		for (std::list<struct risk_adj>::iterator itadj = adj_list.begin(); itadj != adj_list.end(); itadj++) {
-			// for each risk_adj 'itadj' in adj_list...
-			assert(itadj->eff == itadj->me->effective); // for testing only, so I'm convinced
-			float risk = float(itadj->eff) / float(itadj->Nlist.size());
-			for (std::list<struct cell *>::iterator itcell = itadj->Nlist.begin(); itcell != itadj->Nlist.end(); itcell++) {
-				// for each cell* 'itcell' in Nlist of itadj...
-				std::list<struct risk_unk>::iterator t = lookup_adj2unk(*itcell, &border_list);
-				t->risk.push_back(risk); // accumulate all the risks from all adjacent cells
-			}
+	// now, find risk for each border cell from the pods
+	// step 10: iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
+	for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
+		float podrisk = podit->risk();
+		for (int i = 0; i < podit->cell_list.size(); i++) {
+			myriskholder.addrisk(podit->cell_list[i], podrisk);
 		}
+	}
 
-		for (std::list<struct risk_unk>::iterator itunk = border_list.begin(); itunk != border_list.end(); itunk++) {
-			// for each risk_unk...
-			float avg_risk = 0;
-			for (std::list<float>::iterator itf = itunk->risk.begin(); itf != itunk->risk.end(); itf++) {
-				// accumulate the risks from various sources into a single sum
-				avg_risk += *itf;
-			}
-			// divide by size to turn it into an average
-			avg_risk = avg_risk / itunk->risk.size();
-			itunk->risk.clear();
-			// now the only item in the 'risk list' is the averaged value
-			itunk->risk.push_back(avg_risk);
-		}
+	// step 11: find the minimum risk from anything in the border cells (pods) and any cells with that risk
+	struct riskreturn myriskreturn = myriskholder.findminrisk();
 
-
-		// get everything in border_list with (or tied for) lowest risk
-		std::list<struct risk_unk *> minlist;
-		float minrisk = 100;
-		for (std::list<struct risk_unk>::iterator itunk = border_list.begin(); itunk != border_list.end(); itunk++) {
-			//float j = (*itunk).risk;
-			float j = (*itunk).risk.front();
-			if (j == minrisk) {
-				minlist.push_back(&(*itunk));
-			} else if (j < minrisk) {
-				minrisk = j;
-				minlist.clear();
-				minlist.push_back(&(*itunk));
-			}
-		}
-
-		// now everything from the border with the risk = minrisk is in minlist, and the interior_risk is known
-		if ((interior_risk < minrisk) && (!interior_list.empty())){
-			return rand_from_list(&interior_list);
-		} else {
-			int f = rand() % minlist.size();
-			std::list<struct risk_unk *>::iterator itmin = minlist.begin();
-			for (int i = 0; i < f; i++) { itmin++; }
-			return (*itmin)->me;
-		}
-
-
-
+	// step 12: decide between border and interior, call 'rand_from_list' and return
+	if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, interior_risk = %.3f, border_risk = %.3f\n", interior_risk, myriskreturn.minrisk);
+	//if (interior_risk == 100.) {
+	//	// unlikely but plausible (note: if interior is empty, interior_risk will be set at 150)
+	//	// this is eclipsed by the 'maxguess' section, unless this scenario happens before the end-game
+	//	results.flagme.insert(results.flagme.end(), interior_list.begin(), interior_list.end());
+	//	results.method = 2;
+	//} else 
+	if (interior_risk < myriskreturn.minrisk) {
+		// interior is safer
+		results.clearme.push_back(rand_from_list(&interior_list));
+		results.method = 1;
 	} else {
-		return rand_from_list(&unklist);
+		// border is safer, or they are tied
+		results.clearme.push_back(rand_from_list(&myriskreturn.minlist));
+		results.method = 1;
 	}
+
+	return results;
+
 }
 
 
-// recursive
-struct recursion_return recursive_allocate_border_mines(std::list<struct risk_adj> adj_list, std::list<struct risk_unk> unk_list, struct cell * target, int current_depth) {
-	// place a "flag" on the target:
-	std::list<struct risk_unk>::iterator t = lookup_adj2unk(target, &unk_list);
-	std::vector<struct cell *> holder;
-	for (std::list<struct cell *>::iterator i = t->Nlist.begin(); i != t->Nlist.end(); i++) {
-		// for each adj cell 'i' in Nlist of risk_unk 't' (from target)
-		// match an adj_list entry to the cell, guaranteed to exist (i hope)
-		std::list<struct risk_adj>::iterator itadj = lookup_unk2adj(*i, &adj_list);
-		// decrement adj #
-		itadj->eff -= 1;
-		// if zero, then remove it
-		if (itadj->eff == 0) {
-			holder.push_back(itadj->me); // wont have any duplicates
-			adj_list.erase(itadj); // delete by iterator
-			// if list is empty, then return 1 (should never happen, other return section should activate instead)
-			if (adj_list.size() == 0)
-				return recursion_return(1);
-		} else {
-			// if not removed, then remove 'target' from its Nlist
-			itadj->Nlist.remove(target); // delete by value
-		}
-	}
-	
-	// now i need to remove from Nlist in risk_unk in unk_list any references to the risk_adj cells that were removed
-	for (std::list<struct risk_unk>::iterator itunk = unk_list.begin(); itunk != unk_list.end(); itunk++) {
-		// for every risk_unk 'itunk' in unk_list...
-		for (int i = 0; i < holder.size(); i++) {
-			// ... for every cell that was removed from adj_list...
-			//... remove any references to it in Nlist
-			itunk->Nlist.remove(holder[i]);
-		}
+// recursively operates on a interconnected 'chain' of pods, and returns the list of all allocations it can find.
+// 'rescan_counter' will periodically check that the chain is still completely interlinked; if it has divided, then each section
+//		can have the recursion called on it (much faster this way). not sure what frequency it should rescan for chain integrity; 
+//		currently set to every 3 levels.
+// 'recursion_safety_valve' is set whenever it would return something resulting from 10k or more solutions, then from that point
+//		till the chain is done, it checks max 2 scenarios per level.
+struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) {
+	// step 0: are we done?
+	if (mychain.podlist.empty()) {
+		return podwise_return(0, 1);
+	} else if (mychain.podlist.size() == 1) {
+		int m = mychain.podlist.front().mines;
+		int c = comb_int(m, mychain.podlist.front().size());
+		return podwise_return(m, c);
 	}
 
-	std::list<struct risk_unk *> maxlist;
-	int maxsize = 0;
-	// for each risk_adj in adj_list, look through the Nlist at all risk_unk, and look at the size of THEIR Nlist
-	// collect everything tied for max size
-	// AKA which unknown cell will satisfy the most visible adjacency cells, or tied for most
-	for (std::list<struct risk_adj>::iterator itadj = adj_list.begin(); itadj != adj_list.end(); itadj++) {
-		// for each risk_adj 'itadj' in adj_list...
-		for (std::list<struct cell *>::iterator whichcell = itadj->Nlist.begin(); whichcell != itadj->Nlist.end(); whichcell++) {
-			// for each cell* 'whichcell' in Nlist of itadj...
-			// ... turn the cell* into a risk_unk 'p' in unk_list
-			std::list<struct risk_unk>::iterator p = lookup_adj2unk(*whichcell, &unk_list);
-			int j = p->Nlist.size();
-			if (j == maxsize) {
-				maxlist.push_back(&(*p));
-			} else if (j > maxsize) {
-				maxsize = j;
-				maxlist.clear();
-				maxlist.push_back(&(*p));
-			}
-		}
-	}
-	maxlist.sort(compare_3); maxlist.unique(equivalent_2);
-
-	// for each risk_unk* in maxlist, recurse with the current adj_list and unk_list using the cell* from the selected risk_unk as the target
-	//int minret = 100;
-	int maxret = 0;
-	int how_wide = 0;
-	if (maxsize == 1) {
-		// if maxsze==1, then each unk it might use as a target only satisfies one adj cell. So, the order doesn't matter at all!
-		// minret = the sum of the 'eff' values for all remaining risk_adj
-		//minret = 0;
-		for (std::list<struct risk_adj>::iterator itadj = adj_list.begin(); itadj != adj_list.end(); itadj++) {
-			//minret += itadj->eff;
-			maxret += itadj->eff;
-		}
+	// step 1: is it time to rescan the chain?
+	if (rescan_counter > 0) {
+		rescan_counter--;
 	} else {
-		for (std::list<struct risk_unk *>::iterator itmax = maxlist.begin(); itmax != maxlist.end(); itmax++) {
-			struct recursion_return r = recursive_allocate_border_mines(adj_list, unk_list, (*itmax)->me, current_depth + 1);
-			//if (r.minret < minret) { minret = r.minret; }
-			if (r.maxret > maxret) { maxret = r.maxret; }
-			if (current_depth >= RECURSIVE_EFFORT) // kludge: after going this deep, stop trying the possibilities at all
-				break;
-			how_wide++;
-			if (how_wide >= RECURSIVE_WIDTH_DONT_CHANGE) // kludge: only try 2 of the paths starting from here, instead of all of them
-				break;
+		rescan_counter = CHAIN_RECHECK_DEPTH;
+		int r = mychain.identify_chains();
+		if (r > 1) {
+			// if it has broken into 2 or more distinct chains, seperate them to operate recursively on each! much faster than the whole
+			std::vector<struct chain> chain_list = mychain.sort_into_chains(r, false); // where i'll be sorting them into
+
+			// handle the multiple podwise_return objects, just sum their averages and total lengths
+			// NOTE: this same structure/method used at highest-level, when initially invoking the recursion
+			float sum = 0;
+			int effort_sum = 0;
+			int alloc_product = 1;
+			for (int s = 0; s < r; s++) {
+				struct podwise_return asdf = podwise_recurse(rescan_counter, chain_list[s]);
+				//asdf.validate();
+				sum += asdf.avg();
+				effort_sum += asdf.effort;
+				alloc_product *= asdf.total_alloc();
+			}
+			
+			struct podwise_return asdf2 = podwise_return(sum, alloc_product);
+			asdf2.effort = effort_sum;
+			if (effort_sum > RECURSION_SAFETY_LIMITER)
+				recursion_safety_valve = true;
+			return asdf2;
 		}
+		// if r == 1, then we're still in one contiguous chain. just continue as planned.
 	}
 
-	// return the lowest value of any value a recursion returns, +1 (for me) because it should return the depth it went to
-	return recursion_return(maxret+1);
+	// TODO: is it more efficient to go from the middle (rand) or go from one end (begin) ? results are the same, just a question of time
+	//int mainpodindex = 0;
+	int mainpodindex = rand() % mychain.podlist.size();
+	std::list<struct pod>::iterator temp = mychain.int_to_pod(mainpodindex);
+	// NOTE: if there are no link cells, then front() is disjoint! handle appropriately and recurse down, then return (no branching)
+	// AFAIK, this should never happen... top-level call on disjoint will be handled step 0, any disjoint created will be handled step 3c
+	if (temp->links.empty()) {
+		int f = temp->mines;
+		mychain.podlist.erase(temp);
+		struct podwise_return asdf = podwise_recurse(rescan_counter, mychain);
+		asdf += f;
+		return asdf;
+	}
+
+	// step 2: pick a pod, find all ways to saturate it
+	// NOTE: first-level optimization is that only link/overlap cells are considered... specific allocations within interior cells are
+	//       ignored, since they have no effect on placing flags in any other pods.
+	// NOTE: second-level optimization is eliminating redundant combinations of 'equivalent links', i.e. links that span the same pods
+	//       are interchangeable, and I don't need to test all combinations of them.
+	// list of lists of list-iterators which point at links in the link-list of front() (that's a mouthfull)
+	std::list<struct scenario> scenarios = temp->find_scenarios();
+
+	// where results from each scenario recursion are accumulated
+	struct podwise_return retval = podwise_return();
+	int whichscenario = 1; // int to count how many scenarios i've tried
+	for (std::list<struct scenario>::iterator scit = scenarios.begin(); scit != scenarios.end(); scit++) {
+		// for each scenario found above, make a copy of mychain, then...
+		int flagsthislvl = 0;
+		int allocsthislvl = scit->allocs;
+		std::list<struct cell *> cellsflaggedthislvl;
+		struct chain copychain = mychain;
+		struct podwise_return asdf;
+
+		// these aren't "links", i'm just re-using the struct as a convenient way to couple
+		// one link-cell cell with each pod it needs to be removed from
+		std::list<struct link_with_bool> links_to_flag_or_clear;
+
+		std::list<struct pod>::iterator frontpod = copychain.int_to_pod(mainpodindex);
+		// step 3a: apply the changes according to the scenario by moving links from front() pod to links_to_flag_or_clear
+		for(std::list<std::list<struct link>::iterator>::iterator r = scit->roadmap.begin(); r != scit->roadmap.end(); r++) {
+			// turn iterator-over-iterator into just an iterator
+			std::list<struct link>::iterator linkit = *r;
+			// copy it from front().links to links_to_flag_or_clear as 'flag'...
+			links_to_flag_or_clear.push_back(link_with_bool(*linkit, true));
+			// I really wanted to use "erase" here instead of "remove", oh well
+			// linkit is pointing at the link in the pod in the chain BEFORE I made a copy
+			// i made links before I made the copy because I found the 'equivalent links' before the copy
+			// ...and delete the original
+			frontpod->links.remove(*linkit);
+		}
+		// then copy all remaining links to links_to_flag_or_clear as 'clear'
+		for (std::list<link>::iterator linkit = frontpod->links.begin(); linkit != frontpod->links.end(); linkit++) {
+			links_to_flag_or_clear.push_back(link_with_bool(*linkit, false));
+		}
+
+		// frontpod erases itself and increments by how many mines it has that aren't in the queue
+		flagsthislvl += frontpod->mines - scit->roadmap.size();
+		copychain.podlist.erase(frontpod);
+
+
+		// step 3b: iterate along links_to_flag_or_clear, removing the links from any pods they appear in...
+		// there is high possibility of duplicate links being added to the list, but its handled just fine
+		// decided to run depth-first (stack) instead of width-first (queue) because of the "looping problem"
+		while(!links_to_flag_or_clear.empty()) {
+			// for each link 'blinkit' to be flagged...
+			struct link_with_bool blink = links_to_flag_or_clear.front();
+			links_to_flag_or_clear.pop_front();
+
+			struct cell * sharedcell = blink.l.link_cell;
+			bool tmp = false;
+			// ...go to every pod with a root 'rootit' referenced in 'linkitf' and remove the link from them!
+			for (std::list<struct cell *>::iterator rootit = blink.l.linked_roots.begin(); rootit != blink.l.linked_roots.end(); rootit++) {
+				std::list<struct pod>::iterator activepod = copychain.root_to_pod(*rootit);
+				if (activepod == copychain.podlist.end()) { continue; }
+				if (activepod->remove_link(sharedcell, blink.flagme)) { continue; }
+				tmp = blink.flagme;
+
+				// step 3c: after each change, see if activepod has become 100/0/disjoint/negative... if so, modify podlist and links_to_flag_or_clear
+				//		when finding disjoint, delete it and inc "flags this scenario" accordingly
+				//		when finding 100/0, store the link-cells, delete it, and inc "flags this scenario" accordingly
+				//		when finding pods with NEGATIVE risk, means that this scenario is invalid. simply GOTO after step 4, begin next scenario.
+
+				// NOTE: option 1, apply all the changes, then scan for any special cases and loop if there are any
+				//       option 2 (active): scan for special case after every link is removed
+				// neither one is guaranteed to be better or worse; it varies depending on # of links and interlinking vs # of pods in total
+				int r = activepod->scan();
+				switch (r) {
+				case 1: // risk is negative; initial scenario was invalid... just abort this scenario
+					goto LABEL_END_OF_THE_SCENARIO_LOOP;
+				case 2: // risk = 0
+					for (std::list<link>::iterator linkit = activepod->links.begin(); linkit != activepod->links.end(); linkit++) {
+						links_to_flag_or_clear.push_front(link_with_bool(*linkit, false));
+					}
+					// no inc because I know there are no mines here
+					copychain.podlist.erase(activepod);
+					break;
+				case 3: // risk = 100
+						// add the remaining links in (*activepod) to links_to_flag_or_clear
+						// if risk = 0, will add with 'false'... if risk = 100, will add with 'true'
+					for (std::list<link>::iterator linkit = activepod->links.begin(); linkit != activepod->links.end(); linkit++) {
+						struct link_with_bool t = link_with_bool(*linkit, true);
+						// need to add myself to the link so i will be looked at later and determined to be disjoint
+						// hopefully fixes the looping-problem!
+						t.l.linked_roots.push_back(activepod->root);
+						links_to_flag_or_clear.push_front(t);
+					}
+					// inc by the non-link cells because the links will be placed later
+					//flagsthislvl += activepod->mines - activepod->links.size();
+					//copychain.podlist.erase(activepod);
+					break;
+				case 4: // DISJOINT
+					flagsthislvl += activepod->mines;
+					allocsthislvl *= comb_int(activepod->mines, activepod->size());
+					// allocsthislvl is only 1 if THIS pod has only 1 allocation AND all other things tried so far have only 1 allocation
+					// this pod only has 1 allocation IFF mines == size
+					if((mines_remaining <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) \
+						&& (allocsthislvl == 1) && (activepod->mines > 0))
+						cellsflaggedthislvl.insert(cellsflaggedthislvl.end(), activepod->cell_list.begin(), activepod->cell_list.end());
+					copychain.podlist.erase(activepod);
+					break; // not needed, but whatever
+				}
+			} // end of iteration on shared_roots
+			if (tmp) {
+				flagsthislvl++;
+				if ((mines_remaining <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) && (allocsthislvl == 1))
+					cellsflaggedthislvl.push_back(sharedcell);
+			}
+		}// end of iteration on links_to_flag_or_clear
+
+		 // step 4: recurse! when it returns, append to resultlist its value + how many flags placed in 3a/3b/3c
+		asdf = podwise_recurse(rescan_counter, copychain);
+		asdf += flagsthislvl; // inc the answer for each by how many flags placed this level
+		asdf *= allocsthislvl; // multiply the # allocations for this scenario into each
+		if ((mines_remaining <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) && (allocsthislvl == 1))
+			asdf += cellsflaggedthislvl; // add these cells into the answer for each
+
+		retval += asdf; // append into the return list
+
+		// if the safety valve has been activated, only try RECURSION_SAFE_WIDTH valid scenarios each level at most
+		if (recursion_safety_valve && (whichscenario >= RECURSION_SAFE_WIDTH)) {
+			break;
+		}
+		whichscenario++; // don't want this to inc on an invalid scenario
+	LABEL_END_OF_THE_SCENARIO_LOOP:
+		int x = 5; // need to have something here or else the label/goto gets all whiney
+	}// end of iteration on the various ways to saturate frontpod
+
+
+	// step 5: find the min of the mins and the max of the maxes; return them (or however else I want to combine answers)
+	// perhaps I want to find the average of the mins and the average of the maxes? I'd have to change the struct to use floats then
+
+	// version 1: max of maxes and min of mins
+	// version 2: averages
+	// version 3: just return retval
+	if (retval.effort > RECURSION_SAFETY_LIMITER)
+		recursion_safety_valve = true;
+
+	return retval;
 }
 
 
-// when given a pointer to a cell, and a list of risk_unk, find a risk_unk corresponding to the target
-inline std::list<struct risk_unk>::iterator lookup_adj2unk(struct cell * target, std::list<struct risk_unk> * unklist) {
-	std::list<struct risk_unk>::iterator it;
-	for (it = unklist->begin(); it != unklist->end(); it++) {
-		if (it->me == target)
-			return it;
-	}
-	return unklist->end(); // should never happen
-}
 
-// when given a pointer to a cell, and a list of risk_adj, find a risk_adj corresponding to the target
-inline std::list<struct risk_adj>::iterator lookup_unk2adj(struct cell * target, std::list<struct risk_adj> * adjlist) {
-	std::list<struct risk_adj>::iterator itadj;
-	for (itadj = adjlist->begin(); itadj != adjlist->end(); itadj++) {
-		if (itadj->me == target)
-			return itadj;
-	}
-	return adjlist->end(); // should never happen
+// if a goes first, return negative; if b goes first, return positive; if identical, return 0
+inline int compare_two_cells(struct cell * a, struct cell * b) {
+	return ((b->y * SIZEX_var) + b->x) - ((a->y * SIZEX_var) + a->x);
 }
 
 // if a goes before b, return true... needed for consistient sorting
-bool compare_by_position(struct cell * a, struct cell * b) {
-	return (((a->y * SIZEX_var) + a->x) < ((b->y * SIZEX_var) + b->x));
-}
-// sort by the .me element, needed to get sorted so duplicates can be removed
-bool compare_2(struct risk_unk a, struct risk_unk b) {
-	return compare_by_position(a.me, b.me);
+inline bool sort_by_position(struct cell * a, struct cell * b) {
+	if (compare_two_cells(a, b) < 0) { return true; } else { return false; }
 }
 
-bool equivalent_1(struct risk_unk a, struct risk_unk b) {
-	return (((a.me->y * SIZEX_var) + a.me->x) == ((b.me->y * SIZEX_var) + b.me->x));
+// if a goes first, return negative; if b goes first, return positive; if identical, return 0
+inline int compare_list_of_cells(std::list<struct cell *> a, std::list<struct cell *> b) {
+	if (a.size() != b.size())
+		return b.size() - a.size();
+	// if they are the same size...
+	std::list<struct cell *>::iterator ait = a.begin();
+	std::list<struct cell *>::iterator bit = b.begin();
+	while (ait != a.end()) {
+		int c = compare_two_cells(*ait, *bit);
+		if (c != 0) { return c; }
+		ait++; bit++;
+	}
+	// i guess they're identical
+	return 0;
 }
 
-bool compare_3(struct risk_unk * a, struct risk_unk * b) {
-	return compare_by_position(a->me, b->me);
+// return true if the 1st arg goes before the 2nd arg, return false if 1==2 or 2 goes before 1
+// intentionally ignores the shared_cell member
+bool sort_scenario_blind(std::list<struct link>::iterator a, std::list<struct link>::iterator b) {
+	if (compare_list_of_cells(a->linked_roots, b->linked_roots) < 0) { return true; } else { return false; }
 }
 
-bool equivalent_2(struct risk_unk * a, struct risk_unk * b) {
-	return (((a->me->y * SIZEX_var) + a->me->x) == ((b->me->y * SIZEX_var) + b->me->x));
+// compare two scenarios, while ignoring the shared_cell arg
+// if a goes first, return negative; if b goes first, return positive; if identical, return 0
+inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
+	if (a.size() != b.size())
+		return b.size() - a.size();
+	std::list<std::list<struct link>::iterator>::iterator ait = a.begin();
+	std::list<std::list<struct link>::iterator>::iterator bit = b.begin();
+	while (ait != a.end()) {
+		int c = compare_list_of_cells((*ait)->linked_roots, (*bit)->linked_roots);
+		if (c != 0) { return c; }
+		ait++; bit++;
+	}
+	// i guess they're identical
+	return 0;
+}
+
+// return true if the 1st arg goes before the 2nd arg, return false if 1==2 or 2 goes before 1
+// intentionally ignores the shared_cell member
+bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
+	if (compare_list_of_scenarios(a,b) < 0) { return true; } else { return false; }
+}
+bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
+	if (compare_list_of_scenarios(a, b) == 0) { return true; } else { return false; }
 }
 
 
@@ -932,7 +1766,7 @@ bool equivalent_2(struct risk_unk * a, struct risk_unk * b) {
 // STRATEGY: 121 cross
 // looks for a very specific arrangement of visible/unknown cells; the center is probably safe
 // unlike the other strategies, this isn't based in logic so much... this is just a pattern I noticed
-// return 1 if it is applied, 0 otherwise, -1 if it unexpectedly lost
+// return # cleared if it is applied, 0 otherwise, -1 if it unexpectedly lost
 // NEW VERSION: don't place any flags, only reveal the center cell (it might help)
 int strat_121_cross(struct cell * center) {
 	if (center->effective != 2)
@@ -956,10 +1790,9 @@ int strat_121_cross(struct cell * center) {
 		r = reveal(cc);
 		s = reveal(dd);
 		if ((r == -1) || (s == -1)) {
-			myprintfn(2, "Unexpected loss during MC 121-cross, must investigate!!\n");
 			return -1;
 		} else {
-			return bool(r + s); // reduce to 1 or 0
+			return (r + s);
 		}
 	}
 
@@ -969,10 +1802,9 @@ int strat_121_cross(struct cell * center) {
 		r = reveal(aa);
 		s = reveal(bb);
 		if ((r == -1) || (s == -1)) {
-			myprintfn(2, "Unexpected loss during MC 121-cross, must investigate!!\n");
 			return -1;
 		} else {
-			return bool(r + s); // reduce to 1 or 0
+			return (r + s);
 		}
 	}
 
@@ -981,12 +1813,14 @@ int strat_121_cross(struct cell * center) {
 
 
 // STRATEGY: nonoverlap-safe
-//If the adj unknown tiles of a 1/2 -square are a pure subset of the adj unknown tiles of another
-//square with the same value, then the non - overlap section can be safely revealed!
-//Compare against any other same - value cell in the 5x5 region minus corners
+//If the adj unknown tiles of a 1/2/3 -square are a pure subset of the adj unknown tiles of another
+//square with the same value, then the non-overlap section can be safely revealed!
+//Technically works with 4-squares too, because the max overlap between two cells is 4, but only if
+// one has 4 adj unks and the other has 5+... in that case, just use single-cell logic
+//Compare against any other same-value cell in the 5x5 region minus corners
 // return # of times it was applied, -1 if unexpected loss
 int strat_nonoverlap_safe(struct cell * center) {
-	if (!((center->effective == 1) || (center->effective == 2) || (center->effective == 3)))
+	if (center->effective > 3)
 		return false;
 	std::vector<struct cell *> me_unk = filter_adjacent(center, UNKNOWN);
 	std::vector<struct cell *> other_unk;
@@ -1003,10 +1837,6 @@ int strat_nonoverlap_safe(struct cell * center) {
 		if (me_unk.size() > other_unk.size()) 
 			continue; //shortcut, saves time, nov-safe only
 
-		// TODO: could probably increase efficiency by splicing/merging nov-safe and nov-flag... would be difficult
-		// to combine them tho. might make stat-tracking difficult, might require updating the unknown-lists after
-		// the first one successfully operates, more hard stuff...
-
 		std::vector<std::vector<struct cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
 		// nov-safe needs to know the length of ME and the contents of OTHER
 		if (nonoverlap[0].empty() && !(nonoverlap[1].empty())) {
@@ -1014,12 +1844,11 @@ int strat_nonoverlap_safe(struct cell * center) {
 			for (int i = 0; i < nonoverlap[1].size(); i++) {
 				int r = reveal(nonoverlap[1][i]);
 				if (r == -1) {
-					myprintfn(2, "Unexpected loss during MC nonoverlap-safe, must investigate!!\n");
 					return -1;
 				}
 				retme_sub += r;
 			}
-			retme += bool(retme_sub); // increment by 1 or 0, regardless of how many were cleared
+			retme +=retme_sub; // increment by how many were cleared
 			me_unk = filter_adjacent(center, UNKNOWN); // update me_unk, then continue iterating thru the 5x5
 		}
 	}}
@@ -1034,7 +1863,7 @@ int strat_nonoverlap_safe(struct cell * center) {
 //must be mines
 //Compare against 5x5 region minus corners
 //Can apply to any pair of numbers if X!=0 and Z!=0, I think?
-// returns 0 if nothing happened, 1 if flags were placed, 100 if game was won
+// returns 0 if nothing happened, 1 if flags were placed, -1 if game was WON
 int strat_nonoverlap_flag(struct cell * center) {
 	if ((center->effective <= 1) || (center->effective == 8)) // center must be 2-7
 		return false;
@@ -1059,14 +1888,16 @@ int strat_nonoverlap_flag(struct cell * center) {
 			std::vector<std::vector<struct cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
 			// nov-flag needs to know the length and contents of MY unique cells
 			if (nonoverlap[0].size() == z) {
+				int retval = 0;
 				for (int i = 0; i < z; i++) {
 					int r = set_flag(nonoverlap[0][i]);
+					retval++;
 					if (r == 1) {
 						// already validated win in the set_flag function
-						return 100;
+						return -1;
 					}
 				}
-				return 1;
+				return retval;
 			}
 		}
 	}
@@ -1100,8 +1931,8 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 *To apply settings from the command-line, use any number of these:\n\
    -num, -numgames:      How many games to play with these settings\n\
    -field:               Field size and number of mines, format= #x-#y-#mines\n\
-   -findz, -findzero:    1=on, 0=off. If on, always reveal zero if any remain.\n\
-       Not human-like but always reaches end-game.\n\
+   -findz, -findzero:    1=on, 0=off. If on, reveal zeroes during earlygame.\n\
+       Not human-like but usually reaches end-game.\n\
    -smart, -smartguess:  1=on, 0=off. Replaces random guessing method with\n\
        speculative allocation of mines and risk calculation. Increases runtime\n\
        by 2-8x(avg) but increases winrate.\n\
@@ -1115,10 +1946,10 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 	// apply the defaults
 	NUM_GAMES_var = NUM_GAMES_def;
 	SIZEX_var = SIZEX_def; SIZEY_var = SIZEY_def; NUM_MINES_var = NUM_MINES_def;
-	HUNT_FIND_ZEROS_var = HUNT_FIND_ZEROS_def;
+	FIND_EARLY_ZEROS_var = FIND_EARLY_ZEROS_def;
 	RANDOM_USE_SMART_var = RANDOM_USE_SMART_def;
 	SPECIFY_SEED_var = SPECIFY_SEED_def;
-	DEBUG_var = DEBUG_def;
+	SCREEN_var = SCREEN_def;
 
 
 	/*
@@ -1130,7 +1961,7 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 
 	if (argc == 1) {
 		// no arguments specified, do the interactive prompt thing
-	label_prompt:
+	LABEL_PROMPT:
 		std::string bufstr;
 		printf_s("Please enter settings for running the program. Defaults values are in brackets.\n");
 		printf_s("Number of games: [%i]  ", NUM_GAMES_var);
@@ -1173,45 +2004,12 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			if (NUM_MINES_var < 1) {printf_s("ERR: #mines cannot be zero or negative\n"); return 1;}
 		}
 
-		//printf_s("Field size X: [%i]  ", SIZEX_var);
-		//std::getline(std::cin, bufstr);
-		//if (bufstr.size() != 0) {
-		//	// convert and apply
-		//	SIZEX_var = atoi(bufstr.c_str());
-		//	// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
-		//	if (SIZEX_var < 1) {
-		//		printf_s("ERR: sizeX cannot be zero or negative\n"); return 1;
-		//	}
-		//}
-		//printf_s("Field size Y: [%i]  ", SIZEY_var);
-		//std::getline(std::cin, bufstr);
-		//if (bufstr.size() != 0) {
-		//	// convert and apply
-		//	SIZEY_var = atoi(bufstr.c_str());
-		//	// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
-		//	if (SIZEY_var < 1) {
-		//		printf_s("ERR: sizeY cannot be zero or negative\n"); return 1;
-		//	}
-		//}
-		//printf_s("Number mines in field: [%i]  ", NUM_MINES_var);
-		//std::getline(std::cin, bufstr);
-		//if (bufstr.size() != 0) {
-		//	// convert and apply
-		//	NUM_MINES_var = atoi(bufstr.c_str());
-		//	// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
-		//	if (NUM_MINES_var > (SIZEX_var * SIZEY_var)) {
-		//		printf_s("ERR: #mines > sizeX * sizeY\n"); return 1;
-		//	}
-		//	if (NUM_MINES_var < 1) {
-		//		printf_s("ERR: #mines cannot be zero or negative\n"); return 1;
-		//	}
-		//}
 
-		printf_s("Always reveal zeros, 0/1: [%i]  ", HUNT_FIND_ZEROS_var);
+		printf_s("Always reveal zeros earlygame, 0/1: [%i]  ", FIND_EARLY_ZEROS_var);
 		std::getline(std::cin, bufstr);
 		if (bufstr.size() != 0) {
 			// convert and apply
-			HUNT_FIND_ZEROS_var = bool(atoi(bufstr.c_str()));
+			FIND_EARLY_ZEROS_var = bool(atoi(bufstr.c_str()));
 			// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
 		}
 
@@ -1219,7 +2017,7 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 		std::getline(std::cin, bufstr);
 		if (bufstr.size() != 0) {
 			// convert and apply
-			RANDOM_USE_SMART_var = bool(atoi(bufstr.c_str()));
+			RANDOM_USE_SMART_var = atoi(bufstr.c_str());
 			// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
 		}
 
@@ -1236,29 +2034,27 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 		//	NUM_GAMES_var = 1;
 		//}
 
-		printf_s("Set printout level, 0/1/2: [%i]  ", DEBUG_var);
+		printf_s("Set printout level, 0/1/2: [%i]  ", SCREEN_var);
 		std::getline(std::cin, bufstr);
 		if (bufstr.size() != 0) {
 			// convert and apply
-			DEBUG_var = atoi(bufstr.c_str());
+			SCREEN_var = atoi(bufstr.c_str());
 			// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
-			if (DEBUG_var > 2) { DEBUG_var = 2; }
-			if (DEBUG_var < 0) { DEBUG_var = 0; }
+			if (SCREEN_var > 2) { SCREEN_var = 2; }
+			if (SCREEN_var < 0) { SCREEN_var = 0; }
 		}
 		return 0;
 	}
 
 	for (int i = 1; i < argc; i++) {
 
-		//printf_s("%s\n", argv[i]); // debug
-
 		if (!strncmp(argv[i], "-h", 2) || !strncmp(argv[i], "-?", 2)) {
 			printf_s("%s", helptext);
-			system("pause");
+			//system("pause"); pause outside, not here... if -h is called its definitely from command-line
 			return 1; // abort execution
 
 		} else if (!strncmp(argv[i], "-pro", 4)) {
-			goto label_prompt;
+			goto LABEL_PROMPT;
 
 		} else if (!strncmp(argv[i], "-def", 4)) {
 			printf_s("Running with default values!\n");
@@ -1306,7 +2102,7 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			}
 		} else if (!strncmp(argv[i], "-findz", 6)) {
 			if (argv[i + 1] != NULL) {
-				HUNT_FIND_ZEROS_var = bool(atoi(argv[i + 1]));
+				FIND_EARLY_ZEROS_var = bool(atoi(argv[i + 1]));
 				// NOTE: if the argument at i+1 is not numeric, it simply returns 0 instead of complaining
 				i++; continue;
 			} else {
@@ -1331,10 +2127,10 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			}
 		} else if (!strncmp(argv[i], "-scr", 4)) {
 			if (argv[i + 1] != NULL) {
-				DEBUG_var = atoi(argv[i + 1]);
+				SCREEN_var = atoi(argv[i + 1]);
 				// NOTE: if the argument at i+1 is not numeric, it simply returns 0 instead of complaining
-				if (DEBUG_var > 2) { DEBUG_var = 2; }
-				if (DEBUG_var < 0) { DEBUG_var = 0; }
+				if (SCREEN_var > 2) { SCREEN_var = 2; }
+				if (SCREEN_var < 0) { SCREEN_var = 0; }
 				i++; continue;
 			} else {
 				printf_s("ERR: arg '%s' must be followed by a value, or else omitted!\n", argv[i]); return 1;
@@ -1348,8 +2144,6 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 	return 0;
 }
 
-
-
 // reset_for_game: doesn't actually need to be a function, just nice to gather all the 'reset' operations together
 inline void reset_for_game(std::vector<std::vector<struct cell>> * field_blank) {
 	// reset stat-tracking variables
@@ -1360,9 +2154,7 @@ inline void reset_for_game(std::vector<std::vector<struct cell>> * field_blank) 
 	
 	zerolist.clear(); // reset the list
 	unklist.clear();
-	//gamestate = BEGINNING;
-	//began_guessing = false;
-	mines_remain = NUM_MINES_var;
+	mines_remaining = NUM_MINES_var;
 }
 
 // generate_new_field: doesn't actually need to be a function, just nice to gather all the 'generation' operations together
@@ -1387,8 +2179,8 @@ inline void generate_new_field() {
 		}
 
 	}
-	// print the fully-revealed field to screen only if DEBUG_var==2
-	print_field(1, DEBUG_var);
+	// print the fully-revealed field to screen only if SCREEN_var==2
+	print_field(1, SCREEN_var);
 
 
 	// iterate and populate the zero-list with all remaining zero-cell indices 
@@ -1403,48 +2195,66 @@ inline void generate_new_field() {
 			}
 		}
 	}
-	zerolist.sort(compare_by_position);
-	unklist.sort(compare_by_position);
+	zerolist.sort(sort_by_position);
+	unklist.sort(sort_by_position);
 	// don't really need to sort the lists, because the find-and-remove method iterates linearly instead of using
 	//   a BST, but it makes me feel better to know its sorted. and I only sort it once per game, so its fine.
 }
-
 
 // play one game with the field and zerolist as they currently are
 // this way it's easier to lose from anywhere, without breaking out of loops
 // return 1 = win, return 0 = loss
 inline int play_game() {
 	int r; // holds return value of any 'reveal' calls
-	int numhunts = 0; // how many consecutive hunts
 	int numguesses = 0; // how many consecutive guesses
-	char buffer[6];
+	char buffer[8];
 
 	 // reveal one cell (chosen at random or guaranteed to succeed)
-	if (!HUNT_FIND_ZEROS_var) {
+	if (!FIND_EARLY_ZEROS_var) {
 		// reveal a random cell (game loss is possible!)
 		r = reveal(rand_from_list(&unklist));
 		if (r == -1) { // no need to log it, first-move loss when random-hunting is a handled situation
 			return 0;
 		}
+		// if going to use smartguess, just pretend that the first guess was a smartguess
+		if(RANDOM_USE_SMART_var) { mygamestats.trans_map = "^ "; }
+		else { mygamestats.trans_map = "r "; }
 	} else {
 		// reveal a cell from the zerolist... game loss probably not possible, but whatever
 		r = reveal(rand_from_list(&zerolist));
 		if (r == -1) {
-			myprintfn(2, "Unexpected loss during initial zerolist reveal, must investigate!!\n");
-			return 0;
+			myprintfn(2, "ERR: Unexpected loss during initial zerolist reveal, must investigate!!\n");
+			return -1;
 		}
+		mygamestats.trans_map = "z ";
 	}
 	// add first entry to transition map
-	mygamestats.trans_map += "^ ";
-	print_field(3, DEBUG_var); print_gamestats(DEBUG_var);
+	//mygamestats.trans_map = "^ ";
+	print_field(3, SCREEN_var); print_gamestats(SCREEN_var);
 
 	
 
 	// begin game-loop, continue looping until something returns
 	while (1) {
 		
-		int action = 0; // flag indicating some action was taken
-		int numactions = 0; // how many actions have been taken during this stage
+		int action = 0; // flag indicating some action was taken this LOOP
+		int numactions = 0; // how many actions have been taken during this STAGE
+
+		// if # of mines remaining = # of unknown cells remaining, flag them and win!
+		if (mines_remaining == unklist.size()) {
+			numactions = mines_remaining;
+			while(!unklist.empty()) {
+				r = set_flag(unklist.front());
+				if (r == 1) {
+					// validated win! time to return!
+					// add entry to transition map, use 'numactions'
+					sprintf_s(buffer, "s%i ", numactions);
+					mygamestats.trans_map += buffer;
+					return 1;
+				}
+			}
+		}
+
 		////////////////////////////////////////////
 		// begin single-cell logic loop
 		mygamestats.gamestate = SINGLECELL;
@@ -1463,16 +2273,16 @@ inline int play_game() {
 				if ((me->effective != 0) && (me->effective == unk.size())) {
 					// flag all unknown squares
 					for (int i = 0; i < unk.size(); i++) {
+						action += 1; // inc by # of cells flagged
 						r = set_flag(unk[i]);
 						if (r == 1) {
 							// validated win! time to return!
 							// add entry to transition map, use 'numactions'
-							sprintf_s(buffer, "s%i ", (numactions + action + 1));
+							sprintf_s(buffer, "s%i ", (numactions + action));
 							mygamestats.trans_map += buffer;
 							return 1;
 						}
 					}
-					action += 1;
 					unk = filter_adjacent(unk, UNKNOWN); // must update the unknown list
 				}
 				
@@ -1482,10 +2292,10 @@ inline int play_game() {
 					for (int i = 0; i < unk.size(); i++) {
 						r = reveal(unk[i]);
 						if (r == -1) {
-							myprintfn(2, "Unexpected loss during SC satisfied-reveal, must investigate!!\n");
-							return 0;
+							myprintfn(2, "ERR: Unexpected loss during SC satisfied-reveal, must investigate!!\n");
+							return -1;
 						}
-						action += bool(r); // reduce whatever value it returned to either 0 or 1
+						action += r; // inc by # of cells revealed
 					}
 					me->status = SATISFIED;
 					continue;
@@ -1504,19 +2314,23 @@ inline int play_game() {
 
 		} // end single-cell logic loop
 
+		//sprintf_s(buffer, "s%i ", numactions);
+		//mygamestats.trans_map += buffer;
+		//print_field(3, SCREEN_var); print_gamestats(SCREEN_var); // post-multicell print
 		if (numactions != 0) {
-			numhunts = 0; numguesses = 0;
+			numguesses = 0;
 			// add entry to transition map, use 'numactions'
 			sprintf_s(buffer, "s%i ", numactions);
 			mygamestats.trans_map += buffer;
-			print_field(3, DEBUG_var); print_gamestats(DEBUG_var); // post-singlecell print
+			print_field(3, SCREEN_var); print_gamestats(SCREEN_var); // post-singlecell print
 		}
 
 		////////////////////////////////////////////
 		// begin multi-cell logic (run through once? multiple times? haven't decided)
-		// (currently only runs through exactly once)
+		// (currently loops until done, or 10 loops)
 		numactions = 0;
 		mygamestats.gamestate = MULTICELL;
+		int numloops = 0;
 		while (1) {
 			action = 0; 
 			for (int y = 0; y < SIZEY_var; y++) { for (int x = 0; x < SIZEX_var; x++) {// iterate over each cell
@@ -1528,22 +2342,22 @@ inline int play_game() {
 				r = strat_121_cross(me);
 				if (r == 0) {// nothing happened!
 					// skip
-				} else if (r == 1) {// some cells were revealed!
+				} else if (r > 0) {// some cells were revealed!
 					mygamestats.strat_121++;
-					action += r;
-				} else if (r == -1) {// unexpected game loss?
-					// logged inside the function
-					return 0;
+					action += r; // inc by # of cells revealed
+				} else if (r == -1) {// unexpected game loss, should be impossible!
+					myprintfn(2, "ERR: Unexpected loss during MC 121-cross, must investigate!!\n");
+					return -1;
 				}
 
 				// strategy 4: nonoverlap-flag
 				r = strat_nonoverlap_flag(me);
 				if (r == 0) {// nothing happened!
 					// skip
-				} else if (r == 1) {// some cells were flagged!
+				} else if (r > 0) {// some cells were flagged!
 					mygamestats.strat_nov_flag++;
-					action += r;
-				} else if (r == 100) {// game won!
+					action += r; // inc by # of cells flagged
+				} else if (r == -1) {// game won!
 					mygamestats.strat_nov_flag++;
 					sprintf_s(buffer, "m%i ", (numactions + action + 1));
 					mygamestats.trans_map += buffer;
@@ -1555,11 +2369,11 @@ inline int play_game() {
 				if (r == 0) {// nothing happened!
 					// skip
 				} else if (r > 0) {// some cells were revealed!
-					mygamestats.strat_nov_safe += r;
-					action += r;
-				} else if (r == -1) {// unexpected game loss?
-					// logged inside the function
-					return 0;
+					mygamestats.strat_nov_safe++;
+					action += r; // inc by # of cells flagged
+				} else if (r == -1) {// unexpected game loss, should be impossible?
+					myprintfn(2, "ERR: Unexpected loss during MC nonoverlap-safe, must investigate!!\n");
+					return -1;
 				}
 
 
@@ -1567,87 +2381,105 @@ inline int play_game() {
 			if (action != 0) {
 				numactions += action;
 				mygamestats.began_solving = true;
+				numloops++;
+				if (numloops > MULTICELL_LOOP_CUTOFF) { break; }
 			} else {
 				break;
 			}
 
-			//break; // remove this to make it loop until nothing changes
-
 		}// end multi-cell logic loop
+		//sprintf_s(buffer, "m%i ", numactions);
+		//mygamestats.trans_map += buffer;
+		//print_field(3, SCREEN_var); print_gamestats(SCREEN_var); // post-multicell print
 
 		if (numactions != 0) {
-			numhunts = 0; numguesses = 0;
+			numguesses = 0;
 			// add entry to transition map, use 'numactions'
 			sprintf_s(buffer, "m%i ", numactions);
 			mygamestats.trans_map += buffer;
-			print_field(3, DEBUG_var); print_gamestats(DEBUG_var); // post-multicell print
+			print_field(3, SCREEN_var); print_gamestats(SCREEN_var); // post-multicell print
 
 			// don't do hunting, instead go back to singlecell
 		} else {
 			// nothing changed during multi-cell, so reveal a new cell
-			if (zerolist.empty()) {
-				/////////////////////////////////////////////
-				// begin GUESSING phase
-				mygamestats.gamestate = GUESSING;
-				if (mygamestats.began_guessing == false) {
-					mygamestats.began_guessing = true;
-					myprintfn(DEBUG_var, "No more zeros, must begin guessing\n");
-					//print_field(3, DEBUG_var+1); print_gamestats(DEBUG_var+1);
+
+			// begin GUESSING phase
+			mygamestats.gamestate = GUESSING;
+			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+			int winorlose = 10;
+			int method = 1; // 0=optimization, 1=guess, 2=solve
+			int rxsize = 0;
+			char tempchar;
+
+			// actually guess
+			if ((FIND_EARLY_ZEROS_var) && (zerolist.size()) && (mygamestats.began_solving == false)) {
+				// reveal one cell from the zerolist... game loss probably not possible, but whatever
+				r = reveal(rand_from_list(&zerolist));
+				if (r == -1) {
+					myprintfn(2, "ERR: Unexpected loss during hunting zerolist reveal, must investigate!!\n");
+					winorlose = -1;
 				}
+				tempchar = 'z';
+			} else if(!RANDOM_USE_SMART_var) {
+				// random-guess
+				r = reveal(rand_from_list(&unklist));
+				if (r == -1) {
+					winorlose = 0;
+				}
+				tempchar = 'r';
+			} else {
 				// reveal one random cell (game loss is likely!)
 				// To win when random-guessing, if every guess is successful, it will reveal information that the SC/MC
-				// logic will use to place the final flags. So, the only way to win is by placing flags
-				r = reveal(rand_unk());
-				if (r == -1) { // no need to log it, loss when random-hunting is a handled situation
-					return 0;
+				// logic will use to place the final flags. So, the only way to win is by placing flags in the right safe places
+				// note: with random-guessing, old smartguess, it will only return 1 cell to clear
+				// with NEW smartguess, it will usually return 1 cell to clear, but it may return several to clear or several to flag
+				struct smartguess_return rx = smartguess();
+				method = rx.method;
+				rxsize = rx.size();
+				for (int i = 0; i < rx.flagme.size(); i++) { // flag-list (uncommon but possible)
+					r = set_flag(rx.flagme[i]);
+					if (r == 1) {
+						// fall thru, re-use the stat tracking code and return there
+						winorlose = 1; break;
+					}
 				}
-				
-				// add to stats and transition map
-				mygamestats.times_guessing++;
-				numguesses++;
-				if (numguesses >= 2) { // if this is the second+ guess in a string of guesses, need to remove previous trans_map entry
-					// method: (numguesses-1) to string, get length, delete that + 2 trailing chars from trans_map
+				for (int i = 0; i < rx.clearme.size(); i++) { // clear-list
+					r = reveal(rx.clearme[i]);
+					if (r == -1) {
+						winorlose = 0; break;
+					}
+				}
+				tempchar = '^';
+			} 
+
+			// add to stats and transition map
+			int temp = 0;
+			if (method == 1) {
+				mygamestats.times_guessing++; numguesses++; temp = numguesses; // guessing
+				if (numguesses >= 2) { // if this is the second+ hunt in a string of hunts, need to remove previous trans_map entry
+					// method: (numhunts-1) to string, get length, delete that + 2 trailing chars from trans_map
 					int m = (std::to_string(numguesses - 1)).size() + 2; // almost always going to be 3 or 4
 					mygamestats.trans_map.erase(mygamestats.trans_map.size() - m, m);
 				}
-				sprintf_s(buffer, "G%i ", numguesses);
-				mygamestats.trans_map += buffer;
 			} else {
-				/////////////////////////////////////////////
-				// begin HUNTING phase
-				mygamestats.gamestate = HUNTING;
-				if (!HUNT_FIND_ZEROS_var) {
-					// reveal one random cell (game loss is possible!)
-					r = reveal(rand_unk());
-					if (r == -1) { // no need to log it, loss when random-hunting is a handled situation
-						return 0;
-					}
-				} else {
-					// reveal one cell from the zerolist... game loss probably not possible, but whatever
-					r = reveal(rand_from_list(&zerolist));
-					if (r == -1) {
-						myprintfn(2, "Unexpected loss during hunting zerolist reveal, must investigate!!\n");
-						return 0;
-					}
-				}
-				// add to stats and transition map
-				mygamestats.times_hunting++;
-				numhunts++;
-				if (numhunts >= 2) { // if this is the second+ hunt in a string of hunts, need to remove previous trans_map entry
-					// method: (numhunts-1) to string, get length, delete that + 2 trailing chars from trans_map
-					int m = (std::to_string(numhunts - 1)).size() + 2; // almost always going to be 3 or 4
-					mygamestats.trans_map.erase(mygamestats.trans_map.size() - m, m);
-				}
-				sprintf_s(buffer, "^%i ", numhunts);
-				mygamestats.trans_map += buffer;
+				// this must be done after the smartguess
+				numguesses = 0; temp = rxsize;
+				if (method == 0) { tempchar = 'O';} // optimization stage
+				else { tempchar = 'A';} // advanced solver
 			}
-			print_field(3, DEBUG_var); print_gamestats(DEBUG_var); // post-hunt/guess print
+			sprintf_s(buffer, "%c%i ", tempchar, temp);
+			mygamestats.trans_map += buffer;
+
+			if (winorlose != 10) return winorlose;
+
+			print_field(3, SCREEN_var); print_gamestats(SCREEN_var); // post-hunt/guess print
 		}
 
 	}
 
 	// should never hit this
-	myprintfn(2, "Hit end of 'play_game' function without returning 1 or 0, must investigate!!\n");
+	myprintfn(2, "ERR: Hit end of 'play_game' function without returning 1 or 0, must investigate!!\n");
 	return -1;
 }
 
@@ -1659,10 +2491,12 @@ int main(int argc, char *argv[]) {
 	// parse and store the input args here
 	// note to self: argc has # of input args, INCLUDING PROGRAM NAME, argv is pointers to c-strings
 	if (parse_input_args(argc, argv)) {
+		if(argc==1) {
+			system("pause"); // I know it was run from Windows Explorer so pause before it closes
+		}
 		return 0; // abort execution
 	}
 
-	printf_s("beginning minesweeeper solver\n");
 
 	// open log file stream
 	time_t t = time(0);
@@ -1677,49 +2511,61 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	myprintfn(2, "Logfile success! Created '%s'\n\n", buffer.c_str());
+	myprintfn(2, "Beginning MinesweeperSolver version %s\n", VERSION_STRING_def);
 
 	// logfile header info: mostly everything from the #defines
 	myprintfn(2, "Going to play %i games, with X/Y/mines = %i/%i/%i\n", NUM_GAMES_var, SIZEX_var, SIZEY_var, NUM_MINES_var);
-	if (HUNT_FIND_ZEROS_var) {
-		myprintfn(2, "Using 'hunting' method = always succeed (always uncover a zero if any remain)\n");
+	if (FIND_EARLY_ZEROS_var) {
+		myprintfn(2, "Using 'hunting' method = succeed early (uncover only zeroes until solving can begin)\n");
 	} else {
 		myprintfn(2, "Using 'hunting' method = human-like (can lose at any stage)\n");
 	}
 
 	if (RANDOM_USE_SMART_var) {
-		myprintfn(2, "Using 'hunting-guessing' mode = intelligent (slower but increased winrate)\n");
+		myprintfn(2, "Using 'guessing' mode = smartguess (slower but increased winrate)\n");
 	} else {
-		myprintfn(2, "Using 'hunting-guessing' mode = guess randomly (lower winrate but faster)\n");
+		myprintfn(2, "Using 'guessing' mode = guess randomly (lower winrate but faster)\n");
 	}
 
+	// construct a trivial random generator engine from a time-based seed:
+	unsigned int seed = std::chrono::duration_cast< std::chrono::milliseconds >( 
+		std::chrono::system_clock::now().time_since_epoch() 
+		).count();
+	std::default_random_engine generator(seed);
+	std::uniform_int_distribution<int> distribution(1, INT_MAX-1);
+	// invoke: distribution(generator);
+
+
 	// seed random # generator
-	int tt = 0;
 	if (SPECIFY_SEED_var == 0) {
 		// create a new seed from time, log it, apply it
-		myprintfn(2, "Generating new seed(s)\n");
-		std::chrono::milliseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >(
-			std::chrono::system_clock::now().time_since_epoch()
-			);
-		tt = ms.count();
+		myprintfn(2, "Generating new seeds\n");
 	} else {
-		tt = int(SPECIFY_SEED_var);
+		srand(SPECIFY_SEED_var);
+		NUM_GAMES_var = 1;
+		myprintfn(2, "Using seed %i for game 1\n", SPECIFY_SEED_var);
 	}
-	myprintfn(2, "Using seed %i for game 1\n", tt);
 	fflush(logfile);
-	srand(tt);
+
 
 	// set up stat-tracking variables
 	myrunstats = run_stats();
+	// init the 'riskholder' object
+	myriskholder = riskholder(SIZEX_var, SIZEY_var);
 
 	// create 'empty' field, for pasting onto the 'live' field to reset
-	//struct cell field_blank[SIZEX_var][SIZEY_var];
-	std::vector<std::vector<struct cell>> field_blank;
-	std::vector<struct cell> asdf; struct cell asdf2; // needed for using the 'resize' command
-	field_blank.resize(SIZEX_var, asdf);
+	struct cell asdf2 = cell(0,0); // needed for using the 'resize' command, I will overwrite the actual coords later
+	// v1: call reserve -> resize... alt: call resize -> shrink_to_fit
+	std::vector<struct cell> asdf = std::vector<struct cell>(); // init empty
+	asdf.resize(SIZEY_var, asdf2);								// fill it with copies of asdf2
+	asdf.shrink_to_fit();										// set capacity exactly where i want it, no bigger
+	std::vector<std::vector<struct cell>> field_blank = std::vector<std::vector<struct cell>>();// init empty
+	field_blank.resize(SIZEX_var, asdf);														// fill it with copies of asdf
+	field_blank.shrink_to_fit();																// set capacity exactly where i want it, no bigger
 	for (int m = 0; m < SIZEX_var; m++) {
-		field_blank[m].resize(SIZEY_var, asdf2);
 		for (int n = 0; n < SIZEY_var; n++) {
-			field_blank[m][n] = cell(m, n); // may need to change this out for "push_back"
+			(field_blank[m][n]).x = m; // overwrite 0,0 with the correct coords
+			(field_blank[m][n]).y = n; // overwrite 0,0 with the correct coords
 		}
 	}
 
@@ -1727,19 +2573,14 @@ int main(int argc, char *argv[]) {
 	for (int game = 0; game < NUM_GAMES_var; game++) {
 
 		// generate a new seed, log it, apply it... BUT only if not on the first game
-		if (game != 0) {
-			int f = 0;
-			do {
-				// must use CHRONO to get time in MS since epoch, since many games take <1s time(0) was returning the same result and seeding with the same value
-				std::chrono::milliseconds ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-					std::chrono::system_clock::now().time_since_epoch()
-					);
-				f = ms.count();
-			} while (f == tt); // just in case any games go WAY too fast, keep looping until MS returns a different time than the one used before
-			myprintfn(DEBUG_var + 1, "Using seed %i for game %i\n", f, game + 1);
+		if (SPECIFY_SEED_var == 0) {
+			int f = distribution(generator);
+			myprintfn(SCREEN_var + 1, "Using seed %i for game %i\n", f, game + 1);
 			srand(f);
-			tt = f; // save it for comparing against on the next pass
 		}
+		// status tracker for impatient people
+		printf_s("Beginning game %i of %i\n", (game + 1), NUM_GAMES_var);
+
 
 		// reset various global variable things
 		reset_for_game(&field_blank);
@@ -1754,6 +2595,7 @@ int main(int argc, char *argv[]) {
 		myrunstats.strat_121_total += mygamestats.strat_121;
 		myrunstats.strat_nov_flag_total += mygamestats.strat_nov_flag;
 		myrunstats.strat_nov_safe_total += mygamestats.strat_nov_safe;
+		myrunstats.num_guesses_total += mygamestats.times_guessing;
 		// increment run results depending on gamestate and gameresult
 		myrunstats.games_total++;
 		if (r == 0) { // game loss
@@ -1761,87 +2603,36 @@ int main(int argc, char *argv[]) {
 			myrunstats.games_lost++;
 			if (mygamestats.began_solving == false) {
 				myrunstats.games_lost_beginning++;
-			} else if (mygamestats.gamestate == HUNTING) {
-				myrunstats.games_lost_hunting++;
-			} else if (mygamestats.gamestate == GUESSING) {
-				myrunstats.games_lost_guessing++;
+			}
+			float remaining = float(mines_remaining) / float(NUM_MINES_var);
+			if (remaining > 0.85) {
+				myrunstats.games_lost_earlygame++; // 0-15% completed
+			} else if (remaining > 0.15) {
+				myrunstats.games_lost_midgame++; // 15-85% completed
 			} else {
-				myrunstats.games_lost_unexpectedly++;
+				myrunstats.games_lost_lategame++; // 85-100% completed
 			}
 		} else if (r == 1) { // game win
 			mygamestats.trans_map += "W";
 			myrunstats.games_won++;
-			if (mygamestats.began_guessing == true) {
+			if (mygamestats.times_guessing > 0) {
 				myrunstats.games_won_guessing++;
 			} else {
 				myrunstats.games_won_noguessing++;
 			}
+		} else if (r == -1) {
+			myrunstats.games_lost_unexpectedly++;
 		}
+
 		// print/log single-game results (also to console if #debug)
-		print_field(3, DEBUG_var+1);
-		print_gamestats(DEBUG_var+1);
+		print_field(3, SCREEN_var+1);
+		print_gamestats(SCREEN_var+1);
 
-		// status tracker for impatient people
-		printf_s("Finished game %i of %i\n", (game+1), NUM_GAMES_var);
-
-
+		//printf_s("Finished game %i of %i\n", (game+1), NUM_GAMES_var);
 	}
 
 	// done with games!
-
-	// calculate total time elapsed and format for display
-	std::chrono::milliseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >(
-		std::chrono::system_clock::now().time_since_epoch()
-		);
-	long f = ms.count();
-	int elapsed_ms = int(f - myrunstats.start); // currently in ms
-	double elapsed_sec = double(elapsed_ms) / 1000.; // seconds with a decimal
-
-	double sec = fmod(elapsed_sec, 60.);
-	int elapsed_min = int((elapsed_sec - sec) / 60.);
-	int min = elapsed_min % 60;
-	int hr = (elapsed_min - min) / 60;
-	char timestr[20];
-	sprintf_s(timestr, "%i:%02i:%05.3f", hr, min, sec);
-
-	// print/log overall results (always print to terminal and log)
-	myprintfn(2, "\nDone playing all %i games, displaying results! Time = %s\n\n", NUM_GAMES_var, timestr);
-	myprintfn(2, "Games used X/Y/mines = %i/%i/%i\n", SIZEX_var, SIZEY_var, NUM_MINES_var);
-	if (HUNT_FIND_ZEROS_var) {
-		myprintfn(2, "Used 'hunting' method = always succeed (always uncover a zero if any remain)\n");
-	} else {
-		myprintfn(2, "Used 'hunting' method = human-like (can lose at any stage)\n");
-	}
-	if (RANDOM_USE_SMART_var) {
-		myprintfn(2, "Used 'hunting-guessing' mode = intelligent (slower but increased winrate)\n");
-	} else {
-		myprintfn(2, "Used 'hunting-guessing' mode = guess randomly (lower winrate but faster)\n");
-	}
-	myprintfn(2, "Average time per game:                   %8.4f sec\n", (float(elapsed_sec) / float(myrunstats.games_total)));
-	if (RANDOM_USE_SMART_var) {
-	myprintfn(2, "Smartguess border est. avg deviation:     %+7.4f\n", (float(myrunstats.smarguess_maxret_diff) / float(myrunstats.smartguess_attempts)));
-	}
-	myprintfn(2, "Average 121-cross uses per game:         %5.1f\n", (float(myrunstats.strat_121_total) / float(myrunstats.games_total)));
-	myprintfn(2, "Average nonoverlap-flag uses per game:   %5.1f\n", (float(myrunstats.strat_nov_flag_total) / float(myrunstats.games_total)));
-	myprintfn(2, "Average nonoverlap-safe uses per game:   %5.1f\n\n", (float(myrunstats.strat_nov_safe_total) / float(myrunstats.games_total)));
-	myprintfn(2, "Total games played:                     %6i\n", myrunstats.games_total);
-	if (myrunstats.games_with_eights != 0) {
-	myprintfn(2, "    Games with 8-adj cells:              %5i\n", myrunstats.games_with_eights);
-	}
-	myprintfn(2, "    Total games won:                     %5i   %5.1f%%    -----\n", myrunstats.games_won,              (100. * float(myrunstats.games_won) / float(myrunstats.games_total)));
-	myprintfn(2, "        Games won without guessing:      %5i   %5.1f%%   %5.1f%%\n", myrunstats.games_won_noguessing,  (100. * float(myrunstats.games_won_noguessing) / float(myrunstats.games_total)),  (100. * float(myrunstats.games_won_noguessing) / float(myrunstats.games_won)));
-	myprintfn(2, "        Games won that required guessing:%5i   %5.1f%%   %5.1f%%\n", myrunstats.games_won_guessing,    (100. * float(myrunstats.games_won_guessing) / float(myrunstats.games_total)),    (100. * float(myrunstats.games_won_guessing) / float(myrunstats.games_won)));
-	myprintfn(2, "    Total games lost:                    %5i   %5.1f%%    -----\n", myrunstats.games_lost,             (100. * float(myrunstats.games_lost) / float(myrunstats.games_total)));
-	myprintfn(2, "        Games lost in the first move(s): %5i   %5.1f%%   %5.1f%%\n", myrunstats.games_lost_beginning,  (100. * float(myrunstats.games_lost_beginning) / float(myrunstats.games_total)),  (100. * float(myrunstats.games_lost_beginning) / float(myrunstats.games_lost)));
-	myprintfn(2, "        Games lost in midgame hunting:   %5i   %5.1f%%   %5.1f%%\n", myrunstats.games_lost_hunting,    (100. * float(myrunstats.games_lost_hunting) / float(myrunstats.games_total)),    (100. * float(myrunstats.games_lost_hunting) / float(myrunstats.games_lost)));
-	myprintfn(2, "        Games lost in lategame guessing: %5i   %5.1f%%   %5.1f%%\n", myrunstats.games_lost_guessing,   (100. * float(myrunstats.games_lost_guessing) / float(myrunstats.games_total)),   (100. * float(myrunstats.games_lost_guessing) / float(myrunstats.games_lost)));
-	if (myrunstats.games_lost_unexpectedly != 0) {
-	myprintfn(2, "        Games lost unexpectedly:         %5i   %5.1f%%   %5.1f%%\n", myrunstats.games_lost_unexpectedly, (100. * float(myrunstats.games_lost_unexpectedly) / float(myrunstats.games_total)), (100. * float(myrunstats.games_lost_unexpectedly) / float(myrunstats.games_lost)));
-	}
-	myprintfn(2, "\n");
-
-	
-	fflush(logfile);
+	myrunstats.print_final_stats();
 
 	fclose(logfile);
 	system("pause");
