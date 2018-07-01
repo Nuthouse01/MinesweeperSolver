@@ -1,6 +1,6 @@
 /* 
 MinesweeperProject.cpp
-Brian Henson, 4/2/2018, v4.7
+Brian Henson, 5/22/2018, v4.8
 This whole program (and all solver logic within it) was developed all on my own, without looking up anything
 online. I'm sure someone else has done their PHD thesis on creating the 'perfect minesweeper solver' but I
 didn't look at any of their work, I developed these strategies all on my own.
@@ -12,17 +12,46 @@ MinesweeperProject.cpp, stdafx.cpp, stdafx.h, verhist.txt
 // NOTE: v4.4, moved version history to verhist.txt because VisualStudio is surprisingly awful at scanning long block-comments
 
 
+// testing
+// TODO: test smartguess algorithm winrate with border risk determined via max/min/average of the various contributing pods
+//		^ results are that min is bad, avg/max are roughly equal
+// TODO: test smartguess algorithm speed/accuracy with choosing a pod in the middle (rand), or in the 'front'
+// TODO: re-test 'weighted avg' option for speed/accuracy/winrate now that the rest of the algorithm works good, 100k games
+//		^ results inconclusive, unweighted has slight improvement maybe? 18.4 vs 18.6, within range of uncertainty
+// TODO: re-test algorithm speed/accuracy with different chain recheck level values
 
+// possibly hard
+// TODO: multi-cell logic improvement: sometimes multiple MC rules can be seen from a single field-state, but if one is applied the other
+//		can't be found. But that doesn't mean they have contradictary results... IDEA: on MC loop, store the clears/flags found by the rules,
+//		but don't apply them until the end of iteration over the field. will have some (lots?) of redundancies, not sure if this will have
+//		significant impact on winrate or on speed. definitely would screw up stat-tracking and trans-map tho.
+// TODO: incorporate advanced version of NOV-flag into pod-optimization... not sure how, won't be 100%, but it may help some. running pair-wise
+//		NOV-flag at each stage may help some; running true multi-NOV-flag would be extremely hard to implement
+// TODO: let smartguess find and apply only the concrete parts of a potential solution within a chain? IDEA: apply any flags that are shared
+//		by ALL min or max solutions, when there are multiple min or max solutions?
+// TODO: maybe have smartguess give preference to cells nearer the border, as a tie-breaker? if the risk is the same, might as well
+//		go for something with a greater reward
+// TODO: smartguess pod optimization can sometimes find non-optimal solutions; different orders may lead to substantially different results,
+//		in terns of finding definite-flag or definite-clear cells. AFAIK there are no differences from order when definites cannot be 
+//		found. Might get some improvement by running all possible orders of pod comparisons, but hard to build, very long to execute,
+//		small benefit.
 
-// TODO: could rearchitect the multicell loop so that 121-cross gets more use... is that useful? is that efficient?
-// TODO: test algorithm speed/accuracy with choosing a pod in the middle, or in the front
+// very minor or no benefits
 // TODO: change the logfile print method to instead use >> so if it unexpectedly dies I still have a partial logfile, and/or can read it
 //		while the code is running? very anoying how 'release' mode optimizes away the fflush command
 // TODO: split code between multiple files
+// TODO: determine histogram of recursion depth overall, and related to # of pods or # of mines remaining
+// TODO: use Matlab or something to run the program many many many many times, with different field parameters, and correlate winrate
+//		with field size or mine density or something. BUILD GRAPHS!
 
 
-// NOTE: could turn the field object into a struct, and turn many functions/variables into members... lots of effort for no real benefit
-// other than object-based code
+
+// observations
+// Originally I thought winrate would depend only on mine density, but no. Density determines the "inherent risk" or "base risk"
+// from making a guess, whether smartguess or not; greater density = greater base risk. But, the total # of mines (or the total field
+// size) also is important, because that determines the length of the game; longer games = more guesses needed to complete. Doubling
+// the size and mines (so density stays the same) reduces winrate drastically, perhaps similar to asking the player to win two games
+// in a row.
 
 
 
@@ -337,18 +366,7 @@ struct riskholder {
 	void addrisk(struct cell * foo, float newrisk) {
 		(riskarray[foo->x][foo->y]).riskvect.push_back(newrisk);
 	}
-	// find the avg of the risks and return that average; also clear the list. if list is already empty, return -1
-	// PRIVATE! internal use only
-	float finalrisk(int x, int y) {
-		if ((riskarray[x][y]).riskvect.empty())
-			return -1.;
-		float sum = 0; int s = (riskarray[x][y]).riskvect.size();
-		for (int i = 0; i < s; i++) {
-			sum += (riskarray[x][y]).riskvect[i];
-		}
-		(riskarray[x][y]).riskvect.clear(); // clear it for use next time
-		return (sum / float(s));
-	}
+	float finalrisk(int x, int y);
 	struct riskreturn findminrisk();
 
 	// a struct used only within this struct
@@ -394,8 +412,8 @@ struct smartguess_return {
 // always prints to the logfile; printing to screen depends on #SCREEN_var
 // 0=noprint, 1=log only, 2=both
 #define myprintfn(p, fmt, ...) { \
-	fprintf_s(logfile, fmt, __VA_ARGS__); \
-	if(p >= 2) {printf_s(fmt, __VA_ARGS__);} \
+	if(p >= 1) {fprintf_s(logfile, fmt, __VA_ARGS__); \
+	if(p >= 2) {printf_s(fmt, __VA_ARGS__);}} \
 }
 
 
@@ -406,21 +424,24 @@ struct smartguess_return {
 /*
 example distributions:
 X/Y/mines
-9/9/10
-16/16/40
-30/16/99
-10/18/27
-10/18/38
+9/9/10   (MS easy)
+16/16/40 (MS medium)
+30/16/99 (MS expert)
+30/16/90 (default used for all testing)
+10/18/27 (phone easy)
+10/18/38 (phone medium)
+10/18/67 (phone IMPOSSIBLE)
+
 */
 
 // #defines
 // sets the "default values" for each setting
-#define NUM_GAMES_def				10000
+#define NUM_GAMES_def				100
 #define SIZEX_def					30
 #define SIZEY_def					16
 #define NUM_MINES_def				90
-#define	FIND_EARLY_ZEROS_def		true
-#define RANDOM_USE_SMART_def		false
+#define	FIND_EARLY_ZEROS_def		false
+#define RANDOM_USE_SMART_def		true
 #define VERSION_STRING_def			"v4.8"
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
@@ -444,15 +465,21 @@ X/Y/mines
 // in recursive function, after finding X solutions, stop being so thorough... only test RECURSION_SAFE_WIDTH scenarios at each lvl
 // this comes into play only very rarely even when set as high as 10k
 // with the limiter at 10k, the highest # of solutions found  is 51k, even then the algorithm takes < 1s
-// without the limiter, very rare 'recursion rabbitholes' would find as many as 4.6million solutions to one chain, with very big chains
+// without the limiter, very rare 'recursion rabbitholes' would find as many as 4.6million solutions to one chain, > 1min30sec
 #define RECURSION_SAFETY_LIMITER	10000 
 // when the 'safety valve' is tripped, try X scenarios at each level of recursion, no more
 // probably should only be either 2 or 3
 #define RECURSION_SAFE_WIDTH		2 
+
+
 // in recursion, when taking the average of all solutions, weigh them by their relative likelihood or just do an unweighted avg
-// this SHOULD decrease algorithm deviation and therefore increase winrate, but instead it somehow INCREASES average deviation and winrate is unchanged
-// doesn't make sense at all >:(
+// this SHOULD decrease algorithm deviation and therefore increase winrate, but instead it somehow INCREASES average deviation and 
+// winrate is unchanged... doesn't make sense at all >:(
 #define USE_WEIGHTED_AVG			true
+// change whether border risk is calculated via avg=0/max=1 of the contributing pods
+#define RISK_CALC_METHOD			0
+
+
 
 
 // global vars
@@ -553,12 +580,13 @@ void run_stats::print_final_stats() {
 	int min = elapsed_min % 60;
 	int hr = (elapsed_min - min) / 60;
 	char timestr[20];
-	sprintf_s(timestr, "%i:%02i:%05.3f", hr, min, sec);
+	sprintf_s(timestr, "%i:%02i:%06.3f", hr, min, sec);
 
 	// print/log overall results (always print to terminal and log)
 	myprintfn(2, "\nDone playing all %i games, displaying results! Time = %s\n\n", NUM_GAMES_var, timestr);
 	myprintfn(2, "MinesweeperSolver version %s\n", VERSION_STRING_def);
-	myprintfn(2, "Games used X/Y/mines = %i/%i/%i\n", SIZEX_var, SIZEY_var, NUM_MINES_var);
+	myprintfn(2, "Games used X/Y/mines = %i/%i/%i, mine density = %4.1f%%\n", SIZEX_var, SIZEY_var, NUM_MINES_var, 
+		float(100. * float(NUM_MINES_var) / float(SIZEX_var * SIZEY_var)));
 	if (FIND_EARLY_ZEROS_var) {
 		myprintfn(2, "Using 'hunting' method = succeed early (uncover only zeroes until solving can begin)\n");
 	} else {
@@ -586,7 +614,7 @@ void run_stats::print_final_stats() {
 	myprintfn(2, "        Games won that required guessing:%5i   %5.1f%%   %5.1f%%\n", games_won_guessing, (100. * float(games_won_guessing) / float(games_total)), (100. * float(games_won_guessing) / float(games_won)));
 	myprintfn(2, "    Total games lost:                    %5i   %5.1f%%    -----\n", games_lost, (100. * float(games_lost) / float(games_total)));
 	myprintfn(2, "        Games lost in the first move(s): %5i   %5.1f%%   %5.1f%%\n", games_lost_beginning, (100. * float(games_lost_beginning) / float(games_total)), (100. * float(games_lost_beginning) / float(games_lost)));
-	myprintfn(2, "        Games lost early      (1-15%%):   %5i   %5.1f%%   %5.1f%%\n", games_lost_earlygame, (100. * float(games_lost_earlygame - games_lost_beginning) / float(games_total)), (100. * float(games_lost_earlygame - games_lost_beginning) / float(games_lost)));
+	myprintfn(2, "        Games lost early      (1-15%%):   %5i   %5.1f%%   %5.1f%%\n", games_lost_earlygame - games_lost_beginning, (100. * float(games_lost_earlygame - games_lost_beginning) / float(games_total)), (100. * float(games_lost_earlygame - games_lost_beginning) / float(games_lost)));
 	myprintfn(2, "        Games lost in midgame (15-85%%):  %5i   %5.1f%%   %5.1f%%\n", games_lost_midgame, (100. * float(games_lost_midgame) / float(games_total)), (100. * float(games_lost_midgame) / float(games_lost)));
 	myprintfn(2, "        Games lost in lategame(85-99%%):  %5i   %5.1f%%   %5.1f%%\n", games_lost_lategame, (100. * float(games_lost_lategame) / float(games_total)), (100. * float(games_lost_lategame) / float(games_lost)));
 	if (games_lost_unexpectedly != 0) {
@@ -942,7 +970,30 @@ struct riskreturn riskholder::findminrisk() {
 	struct riskreturn retme = riskreturn(minrisk, &minlist);
 	return retme;
 }
-
+// find the avg/max/min of the risks and return that value; also clear the list. if list is already empty, return -1
+// PRIVATE! internal use only
+float riskholder::finalrisk(int x, int y) {
+	if ((riskarray[x][y]).riskvect.empty())
+		return -1.;
+	float retval = 0.;
+	int s = (riskarray[x][y]).riskvect.size();
+	if (RISK_CALC_METHOD == 0) { // AVERAGE
+		float sum = 0.; 
+		for (int i = 0; i < s; i++) {
+			sum += (riskarray[x][y]).riskvect[i];
+		}
+		retval = sum / float(s);
+	}
+	if (RISK_CALC_METHOD == 1) { // MAXIMUM
+		retval = -1.;
+		for (int i = 0; i < s; i++) {
+			float t = (riskarray[x][y]).riskvect[i];
+			if (t > retval) { retval = t; }
+		}
+	}
+	(riskarray[x][y]).riskvect.clear(); // clear it for use next time
+	return retval;
+}
 
 
 
@@ -1129,61 +1180,61 @@ std::vector<std::vector<struct cell *>> find_nonoverlap(std::vector<struct cell 
 
 // print: either 1) fully-revealed field, 2) in-progress field as seen by human, 3) in-progress field showing 'effective' values
 // borders made with +, zeros: blank, adjacency (or effective): number, unknown: -, flag or mine: *
-// when SCREEN_var is low enough, skipped entirely (doesn't even print to log)
+// if SCREEN=0, don't print anything. if SCREEN=1, print to log. if SCREEN=2, print to both.
 void print_field(int mode, int screen) {
-	if (screen > 0) {
-		if (mode == 1) {
-			myprintfn(screen, "Printing fully-revealed field\n")
-		} else if (mode == 2) {
-				myprintfn(screen, "Printing in-progress field seen by humans\n");
-			} else if (mode == 3) {
-				myprintfn(screen, "Printing in-progress field showing effective values\n");
-			}
-			// build and print the field one row at a time
-
-			// top/bottom:
-			std::string top = std::string(((SIZEX_var + 2) * 2) - 1, '+') + "\n";
-			myprintfn(screen, top.c_str());
-
-			std::string line;
-			for (int y = 0; y < SIZEY_var; y++) {
-				for (int x = 0; x < SIZEX_var; x++) {
-					if ((field[x][y].status == UNKNOWN) && (mode != 1)) {
-						// if mode==full, fall through
-						line += "- "; continue;
-					}
-					// if visible and a mine, this is where the game was lost
-					if ((field[x][y].status == VISIBLE) && (field[x][y].value == MINE)) {
-						line += "X "; continue;
-					}
-					// below here assume the cell is visible/flagged/satified
-					if ((field[x][y].status == FLAGGED) || (field[x][y].value == MINE)) {
-						line += "* "; continue;
-					}
-					// below here assumes the cell is a visible adjacency number
-					if ((field[x][y].value == 0) || ((mode == 3) && (field[x][y].effective == 0))) {
-						line += "  "; continue;
-					}
-					char buf[3];
-					if (mode == 3)
-						sprintf_s(buf, "%d", field[x][y].effective);
-					else
-						sprintf_s(buf, "%d", field[x][y].value);
-					line += buf;
-					line += " ";
-				}
-
-				myprintfn(screen, "+ %s+\n", line.c_str());
-				line.clear();
-			}
-
-			myprintfn(screen, (top + "\n").c_str());
-			fflush(logfile);
+	if (screen <= 0) return; 
+	if (mode == 1) {
+		myprintfn(screen, "Printing fully-revealed field\n")
+	} else if (mode == 2) {
+		myprintfn(screen, "Printing in-progress field seen by humans\n");
+	} else if (mode == 3) {
+		myprintfn(screen, "Printing in-progress field showing effective values\n");
 	}
+	// build and print the field one row at a time
+
+	// top/bottom:
+	std::string top = std::string(((SIZEX_var + 2) * 2) - 1, '+') + "\n";
+	myprintfn(screen, top.c_str());
+
+	std::string line;
+	for (int y = 0; y < SIZEY_var; y++) {
+		for (int x = 0; x < SIZEX_var; x++) {
+			if ((field[x][y].status == UNKNOWN) && (mode != 1)) {
+				// if mode==full, fall through
+				line += "- "; continue;
+			}
+			// if visible and a mine, this is where the game was lost
+			if ((field[x][y].status == VISIBLE) && (field[x][y].value == MINE)) {
+				line += "X "; continue;
+			}
+			// below here assume the cell is visible/flagged/satified
+			if ((field[x][y].status == FLAGGED) || (field[x][y].value == MINE)) {
+				line += "* "; continue;
+			}
+			// below here assumes the cell is a visible adjacency number
+			if ((field[x][y].value == 0) || ((mode == 3) && (field[x][y].effective == 0))) {
+				line += "  "; continue;
+			}
+			char buf[3];
+			if (mode == 3)
+				sprintf_s(buf, "%d", field[x][y].effective);
+			else
+				sprintf_s(buf, "%d", field[x][y].value);
+			line += buf;
+			line += " ";
+		}
+
+		myprintfn(screen, "+ %s+\n", line.c_str());
+		line.clear();
+	}
+
+	myprintfn(screen, (top + "\n").c_str());
+	fflush(logfile);
 }
 
 
 // print the stats of the current game, and some whitespace below
+// if SCREEN=0, don't print anything. if SCREEN=1, print to log. if SCREEN=2, print to both.
 void print_gamestats(int screen) {
 	myprintfn(screen, "Transition map: %s\n", mygamestats.trans_map.c_str());
 	myprintfn(screen, "121-cross hits: %i, nonoverlap-safe hits: %i, nonoverlap-flag hits: %i\n",
@@ -1383,7 +1434,7 @@ struct smartguess_return smartguess() {
 		std::vector<struct podwise_return> retholder = std::vector<struct podwise_return>(numchains, podwise_return());
 		for (int s = 0; s < numchains; s++) {
 			recursion_safety_valve = false; // reset the flag for each chain
-			struct podwise_return asdf = podwise_recurse(CHAIN_RECHECK_DEPTH, listofchains[s]);
+			struct podwise_return asdf = podwise_recurse(0, listofchains[s]);
 			border_allocation += asdf.avg();
 			if (mines_remaining <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) { retholder[s] = asdf; }
 			if (ACTUAL_DEBUG || recursion_safety_valve) myprintfn(2, "DEBUG: in smart-guess, chain %i with %i pods found %i solutions\n", s, listofchains[s].podlist.size(), asdf.size());
@@ -1494,8 +1545,7 @@ struct smartguess_return smartguess() {
 
 // recursively operates on a interconnected 'chain' of pods, and returns the list of all allocations it can find.
 // 'rescan_counter' will periodically check that the chain is still completely interlinked; if it has divided, then each section
-//		can have the recursion called on it (much faster this way). not sure what frequency it should rescan for chain integrity; 
-//		currently set to every 3 levels.
+//		can have the recursion called on it (much faster this way). not sure what frequency it should rescan for chain integrity...
 // 'recursion_safety_valve' is set whenever it would return something resulting from 10k or more solutions, then from that point
 //		till the chain is done, it checks max 2 scenarios per level.
 struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) {
@@ -1509,10 +1559,10 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 	}
 
 	// step 1: is it time to rescan the chain?
-	if (rescan_counter > 0) {
-		rescan_counter--;
+	if (rescan_counter < CHAIN_RECHECK_DEPTH) {
+		rescan_counter++;
 	} else {
-		rescan_counter = CHAIN_RECHECK_DEPTH;
+		rescan_counter = 0;
 		int r = mychain.identify_chains();
 		if (r > 1) {
 			// if it has broken into 2 or more distinct chains, seperate them to operate recursively on each! much faster than the whole

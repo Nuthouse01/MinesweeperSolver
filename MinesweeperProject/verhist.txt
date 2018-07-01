@@ -87,22 +87,50 @@ v4.7: Hopefully fixed looping-problem, now algorithm will (hopefully) always ret
 		Added printout for average # of guesses per game (not counting initial blind guess)
 		Fixed the "exact answer" incompleteness... increased memory usage (as expected) but speed is unchanged
 
-v4.8: Minor tweaks to comments and if-statement conditions
-		Changed SC, MC so trans-map entries are the # of cells flaged/cleared, not the # of times applied
+v4.8: Minor tweaks to comments
 		Changed reveal() so it also counts the zero-cells
+		Changed SC, MC so trans-map entries are the # of cells flaged/cleared, not the # of times applied
 		Finally removed the hunting-guessing distinction
 		Added trans-map entries for random-guessing and zero-guessing (r and z), ^ is now for smartguess specifically
 		Changed the run-end stats to display (0-15)(15-85)(85-100) in terms of completion when it loses
 		Changed random seeding to use <random> library instead of sequential values from time; removes 1ms floor
+		Changed CHAIN_RECHECK_COUNTER to count up instead of down (functionally the same)
 		
 		
 		
 		
+TODO:
+*multi-cell logic uses "queing" system: change functions to return list of cells to flag/clear
+
+*preserve data sanctity: don't change "effective" values of cells unless revealed (minor efficiency reduction)
+	instead: update the value of X when first revealed, and when something flagged decrement only the VISIBLE surrounding ones
+*make some 'cell' members private, read functions for value/effective, read/flag/reveal function for status, also init function to set them
+*make 'game' class with members: field(array of cells), zerolist, unklist, mines remaining, functions, more?
+*split "base minesweeper structures (game class, flag/reveal/reset/print functions)" into seperate file from "my solver structs/functions" seperate from "main"
+
+*split "advanced solving/chain optimization" into its own function, returns chain and/or cells to flag/clear
+*refine iteration method in advanced solving? 
+	currently iterate until nothing changes
+	perhaps use random order? nah thats a bad plan
+	maybe try to do something like the recursive flag-placer? queue up anything changed as the result of a change?
+*add NOV-flag to advanced solving, pair-compare at least, perhaps even multi-compare (what are the limits?)
+*NOTE: forget about the "different orders produce different results" thing, and dont worry too hard about getting NOV-flag perfect
+
+*instead of 15/85/99, record/build/display histogram of solver progress after loss
+
+*re-test and probably eliminate "chain recheck depth" feature
+
+*3 guess options: 
+		dumb(random), 
+		smart(current: recurse to estimate border/interior count, find border risk via contributing pods(max?avg?), but use endsolver below a threshold),
+		perfect(thorough, try all scenarios and see how many scenarios place a flag in each border cell, possibly revert to "smart" if it gets out of control)
 		
-		
-		
-		
-		
+*NOTE: different purposes/uses: endsolver cares about how many mines remain, perfect does not
+		if near the end, returning each allocation to see if there is a minimum/maximum solution, but if there is a non-discrete minimum/maximum 
+			solution then I may get a partial solution from their commonalities/overlap
+		when in the middle, not looking for a specific solution, just for the overall risk % (may reduce memory usage by returning/combining lists of 
+			risks rather than solutions/allocations)
+		perhaps below a threshold, both smart->endsolver and perfect->endsolver ?
 		
 		
 		
