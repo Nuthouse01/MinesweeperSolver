@@ -1,0 +1,12 @@
+x64/Debug/
+
+x64/Release/*.iobj
+x64/Release/*.pdb
+x64/Release/*.ipdb
+
+.vs/
+
+MinesweeperProject/LOGS/
+MinesweeperProject/x64/
+
+

@@ -96,7 +96,8 @@ v4.8: Minor tweaks to comments
 		Changed random seeding to use <random> library instead of sequential values from time; removes 1ms floor
 		Changed CHAIN_RECHECK_COUNTER to count up instead of down (functionally the same)
 		
-		
+v4.9: Logs go to LOGS folder, creates the folder if its not there already
+		Removed stdafx.h and other precompiled header nonsense (finally)
 		
 		
 TODO:

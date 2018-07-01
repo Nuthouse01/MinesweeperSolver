@@ -1,12 +1,12 @@
 /* 
 MinesweeperProject.cpp
-Brian Henson, 5/22/2018, v4.8
+Brian Henson, 7/1/2018, v4.9
 This whole program (and all solver logic within it) was developed all on my own, without looking up anything
 online. I'm sure someone else has done their PHD thesis on creating the 'perfect minesweeper solver' but I
 didn't look at any of their work, I developed these strategies all on my own.
 
 Contents: 
-MinesweeperProject.cpp, stdafx.cpp, stdafx.h, verhist.txt
+MinesweeperProject.cpp, verhist.txt, Minesweeper_README.txt
 */
 
 // NOTE: v4.4, moved version history to verhist.txt because VisualStudio is surprisingly awful at scanning long block-comments
@@ -58,8 +58,8 @@ MinesweeperProject.cpp, stdafx.cpp, stdafx.h, verhist.txt
 // from targetver.h:
 #include <SDKDDKVer.h> // not sure what this is but Visual Studio wants me to have it
  
-#include "stdafx.h" // Visual Studio requires this, even if it adds nothing
-
+#include <Windows.h>
+// TODO: this adds the actual max() and min() macros, maybe scan the code and see if I can put them in somewhere
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,6 +74,9 @@ MinesweeperProject.cpp, stdafx.cpp, stdafx.h, verhist.txt
 #include <cassert> // so it aborts when something wierd happens
 #include <time.h>
 
+
+
+
 #include <chrono> // just because time(0) only has 1-second resolution
 #include <cstdarg> // for variable-arg function-macro
 #include <algorithm> // for pod-based intelligent recursion
@@ -82,7 +85,6 @@ MinesweeperProject.cpp, stdafx.cpp, stdafx.h, verhist.txt
 
 #define _USE_MATH_DEFINES
 #include <math.h>
-
 
 
 
@@ -268,9 +270,9 @@ struct podwise_return {
 	}
 	//inline void validate();
 	float avg();
-	struct solutionobj * max();
+	struct solutionobj * prmax();
 	float max_val();
-	struct solutionobj * min();
+	struct solutionobj * prmin();
 	float min_val();
 	int total_alloc();
 
@@ -442,7 +444,7 @@ X/Y/mines
 #define NUM_MINES_def				90
 #define	FIND_EARLY_ZEROS_def		false
 #define RANDOM_USE_SMART_def		true
-#define VERSION_STRING_def			"v4.8"
+#define VERSION_STRING_def			"v4.9"
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 #define SCREEN_def					0
@@ -657,7 +659,7 @@ float podwise_return::avg() {
 	return (a / float(total_weight));
 }
 // max: if there is a tie, or the solution doesn't represent only one allocations, return pointer to NULL
-struct solutionobj * podwise_return::max() {
+struct solutionobj * podwise_return::prmax() {
 	std::list<struct solutionobj>::iterator solit = solutions.begin();
 	std::list<struct solutionobj>::iterator maxit = solutions.begin(); // the one to return
 	bool tied_for_max = false;
@@ -684,7 +686,7 @@ float podwise_return::max_val() {
 	return retmax;
 }
 // min: if there is a tie, or the solution doesn't represent only one allocations, return pointer to NULL
-struct solutionobj * podwise_return::min() {
+struct solutionobj * podwise_return::prmin() {
 	std::list<struct solutionobj>::iterator solit = solutions.begin();
 	std::list<struct solutionobj>::iterator minit = solutions.begin(); // the one to return
 	bool tied_for_min = false;
@@ -1453,7 +1455,7 @@ struct smartguess_return smartguess() {
 				results.clearme.insert(results.clearme.end(), interior_list.begin(), interior_list.end());
 				// for each chain, get the minimum solution object (if there is only one), and if it has only 1 allocation, then apply it as flags
 				for (int a = 0; a < numchains; a++) {
-					struct solutionobj * minsol = retholder[a].min();
+					struct solutionobj * minsol = retholder[a].prmin();
 					if (minsol != NULL)
 						results.flagme.insert(results.flagme.end(), minsol->solution_flag.begin(), minsol->solution_flag.end());
 				}
@@ -1462,7 +1464,7 @@ struct smartguess_return smartguess() {
 				results.flagme.insert(results.flagme.end(), interior_list.begin(), interior_list.end());
 				// for each chain, get the maximum solution object (if there is only one), and if it has only 1 allocation, then apply it
 				for (int a = 0; a < numchains; a++) {
-					struct solutionobj * maxsol = retholder[a].max();
+					struct solutionobj * maxsol = retholder[a].prmax();
 					if (maxsol != NULL)
 						results.flagme.insert(results.flagme.end(), maxsol->solution_flag.begin(), maxsol->solution_flag.end());
 				}
@@ -2553,7 +2555,9 @@ int main(int argc, char *argv[]) {
 	struct tm now;
 	localtime_s(&now, &t);
 	std::string buffer(80, '\0');
-	strftime(&buffer[0], buffer.size(), "minesweeper_%m%d%H%M%S.log", &now);
+	CreateDirectory("./LOGS/",NULL);
+	// TODO: should put brief error catching for CreateDirectory line, but I don't care
+	strftime(&buffer[0], buffer.size(), "./LOGS/minesweeper_%m%d%H%M%S.log", &now);
 	fopen_s(&logfile, buffer.c_str(), "w");
 	if (!logfile) {
 		printf_s("File opening failed, '%s'\n", buffer.c_str());
