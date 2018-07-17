@@ -43,7 +43,7 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v141</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
+    <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -97,7 +97,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -147,6 +147,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="MinesweeperProject.cpp" />
+    <ClCompile Include="Minesweeper_basegame.cpp" />
+    <ClCompile Include="Minesweeper_solver.cpp" />
+    <ClCompile Include="Minesweeper_stats.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Minesweeper_basegame.h" />
+    <ClInclude Include="Minesweeper_settings.h" />
+    <ClInclude Include="Minesweeper_solver.h" />
+    <ClInclude Include="Minesweeper_stats.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

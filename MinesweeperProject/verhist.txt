@@ -98,16 +98,21 @@ v4.8: Minor tweaks to comments
 		
 v4.9: Logs go to LOGS folder, creates the folder if its not there already
 		Removed stdafx.h and other precompiled header nonsense (finally)
+		Removed unused gamestate tracker variable and enum definition
+		Implemented privacy in the 'cell' struct
+		Changed myprintfn variadic-function-macro to just be a variadic-function
+		Created 'basegame' file
+		Created 'solver' and 'settings' files
+		Created 'stats' file
+		Slightly changed how some 'globals' are initialized
+		
+		
+		
+		
 		
 		
 TODO:
 *multi-cell logic uses "queing" system: change functions to return list of cells to flag/clear
-
-*preserve data sanctity: don't change "effective" values of cells unless revealed (minor efficiency reduction)
-	instead: update the value of X when first revealed, and when something flagged decrement only the VISIBLE surrounding ones
-*make some 'cell' members private, read functions for value/effective, read/flag/reveal function for status, also init function to set them
-*make 'game' class with members: field(array of cells), zerolist, unklist, mines remaining, functions, more?
-*split "base minesweeper structures (game class, flag/reveal/reset/print functions)" into seperate file from "my solver structs/functions" seperate from "main"
 
 *split "advanced solving/chain optimization" into its own function, returns chain and/or cells to flag/clear
 *refine iteration method in advanced solving? 
@@ -118,6 +123,7 @@ TODO:
 *NOTE: forget about the "different orders produce different results" thing, and dont worry too hard about getting NOV-flag perfect
 
 *instead of 15/85/99, record/build/display histogram of solver progress after loss
+*from guessing function, return 'risk/safety/luck' value along with chosen cell; accumulate as game goes on
 
 *re-test and probably eliminate "chain recheck depth" feature
 
