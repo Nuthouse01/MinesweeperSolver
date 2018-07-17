@@ -98,6 +98,7 @@ v4.8: Minor tweaks to comments
 		
 v4.9: Logs go to LOGS folder, creates the folder if its not there already
 		Removed stdafx.h and other precompiled header nonsense (finally)
+		Added .gitignore thing
 		Removed unused gamestate tracker variable and enum definition
 		Implemented privacy in the 'cell' struct
 		Changed myprintfn variadic-function-macro to just be a variadic-function
