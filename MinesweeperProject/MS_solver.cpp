@@ -26,10 +26,10 @@
 #include <random> // because I don't like using sequential seeds, or waiting when going very fast
 
 
-#include "Minesweeper_solver.h" // include myself
-#include "Minesweeper_basegame.h"
-#include "Minesweeper_settings.h"
-#include "Minesweeper_stats.h"
+#include "MS_solver.h" // include myself
+#include "MS_basegame.h"
+#include "MS_settings.h"
+#include "MS_stats.h"
 
 
 

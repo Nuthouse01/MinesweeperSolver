@@ -143,19 +143,20 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
+    <ClCompile Include="MS_basegame.cpp" />
+    <ClCompile Include="MS_MAIN.cpp" />
+    <ClCompile Include="MS_solver.cpp" />
+    <ClCompile Include="MS_stats.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="MinesweeperProject.cpp" />
-    <ClCompile Include="Minesweeper_basegame.cpp" />
-    <ClCompile Include="Minesweeper_solver.cpp" />
-    <ClCompile Include="Minesweeper_stats.cpp" />
+    <ClInclude Include="MS_basegame.h" />
+    <ClInclude Include="MS_settings.h" />
+    <ClInclude Include="MS_solver.h" />
+    <ClInclude Include="MS_stats.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Minesweeper_basegame.h" />
-    <ClInclude Include="Minesweeper_settings.h" />
-    <ClInclude Include="Minesweeper_solver.h" />
-    <ClInclude Include="Minesweeper_stats.h" />
+    <Text Include="readme.txt" />
+    <Text Include="verhist.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

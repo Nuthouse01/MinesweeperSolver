@@ -58,9 +58,9 @@ MinesweeperProject.cpp, verhist.txt, Minesweeper_README.txt
 // from targetver.h:
 #include <SDKDDKVer.h> // not sure what this is but Visual Studio wants me to have it
  
-#include <Windows.h>
+#include <Windows.h> // needed to test for and create LOGS directory
 // TODO: this adds the actual max() and min() macros, maybe scan the code and see if I can put them in somewhere
-
+// TODO: see which of these I can remove?
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -92,10 +92,10 @@ MinesweeperProject.cpp, verhist.txt, Minesweeper_README.txt
 
 
 
-#include "Minesweeper_basegame.h"
-#include "Minesweeper_solver.h"
-#include "Minesweeper_settings.h"
-#include "Minesweeper_stats.h"
+#include "MS_basegame.h"
+#include "MS_solver.h"
+#include "MS_settings.h"
+#include "MS_stats.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

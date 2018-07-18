@@ -26,7 +26,7 @@
 
 
 
-#include "Minesweeper_basegame.h" // include myself
+#include "MS_basegame.h" // include myself
 
 
 // basic constructor

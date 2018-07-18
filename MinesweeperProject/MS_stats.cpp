@@ -25,9 +25,9 @@
 #include <random> // because I don't like using sequential seeds, or waiting when going very fast
 
 
-#include "Minesweeper_stats.h" // include myself
-#include "Minesweeper_settings.h"
-#include "Minesweeper_basegame.h" // need this for myprintfn and print_field
+#include "MS_stats.h" // include myself
+#include "MS_settings.h"
+#include "MS_basegame.h" // need this for myprintfn and print_field
 
 
 

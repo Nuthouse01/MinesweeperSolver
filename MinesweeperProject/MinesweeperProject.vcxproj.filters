@@ -9,40 +9,37 @@
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
     </Filter>
-    <Filter Include="Resource Files">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="MinesweeperProject.cpp">
+    <ClCompile Include="MS_basegame.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Minesweeper_basegame.cpp">
+    <ClCompile Include="MS_solver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Minesweeper_solver.cpp">
+    <ClCompile Include="MS_stats.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Minesweeper_stats.cpp">
+    <ClCompile Include="MS_MAIN.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Minesweeper_basegame.h">
+    <ClInclude Include="MS_basegame.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Minesweeper_solver.h">
+    <ClInclude Include="MS_settings.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Minesweeper_settings.h">
+    <ClInclude Include="MS_solver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Minesweeper_stats.h">
+    <ClInclude Include="MS_stats.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="readme.txt" />
+    <Text Include="verhist.txt" />
   </ItemGroup>
 </Project>
