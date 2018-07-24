@@ -5,6 +5,14 @@
 
 
 
+#include <cstdlib> // rand, other stuff
+#include <cstdio> // file pointer SUPPOSED to be defined here, but it works even without this? whatever
+#include <string> // for print_field
+#include <vector> // used
+#include <list> // used
+#include <cassert> // so it aborts when something wierd happens (but its optimized away in 'release' mode)
+#include <cstdarg> // for variable-arg function-macro
+
 
 
 
@@ -69,7 +77,7 @@ class cell {
 private:
 	cell_state status;
 	short unsigned int effective;
-	//short unsigned int value; // NOTE: making this public for smartguess_diff stat only
+	//short unsigned int value; // TODO: implement bias function and make this private again
 public:
 	short unsigned int value; // NOTE: making this public for smartguess_diff stat only
 	cell();
@@ -88,10 +96,28 @@ public:
 
 
 
+
 void myprintfn(int p, const char* fmt, ...);
 inline bool sort_by_position(class cell * a, class cell * b);
 inline int compare_two_cells(class cell * a, class cell * b);
 
+
+
+// NOTE: MUST BE HERE IN THE HEADER, templates can't have separate declarations/definitions
+// return a random object from the provided list, or NULL if the list is empty
+template <class foobar> foobar rand_from_list(std::list<foobar> * fromme) {
+	if (fromme->empty()) { return NULL; } // NOTE: bad if this is supposed to return an iterator!!
+	int f = rand() % fromme->size();
+	std::list<foobar>::iterator iter = fromme->begin();
+	for (int i = 0; i < f; i++) { iter++; } // iterate to this position
+	return *iter;
+}
+
+template <class ttttt> ttttt rand_from_vect(std::vector<ttttt> * fromme) {
+	if (fromme->empty()) { return NULL; } // NOTE: bad if this is supposed to return an iterator!!
+	int f = rand() % fromme->size();
+	return (*fromme)[f];
+}
 
 
 #endif

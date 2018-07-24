@@ -5,33 +5,14 @@
 
 
 
-// TODO: selectively remove these includes to whittle down what is actually needed/used in 'solver'
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <string>
-#include <cstring>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <list>
-#include <cassert> // so it aborts when something wierd happens
-#include <time.h>
-
-
-#include <chrono> // just because time(0) only has 1-second resolution
-#include <cstdarg> // for variable-arg function-macro
-#include <algorithm> // for pod-based intelligent recursion
-#include <random> // because I don't like using sequential seeds, or waiting when going very fast
-
-
-#include "MS_solver.h" // include myself
-#include "MS_basegame.h"
 #include "MS_settings.h"
+#include "MS_basegame.h"
 #include "MS_stats.h"
 
+#include "MS_solver.h" // include myself
 
+// a global flag used in the recursive smartguess
+bool recursion_safety_valve = false; // if recursion goes down a rabbithole, start taking shortcuts
 
 
 // **************************************************************************************
@@ -524,9 +505,6 @@ bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a,
 
 
 
-
-
-
 // find_nonoverlap: takes two vectors of cells, returns (first_vect_unique) (second_vect_unique) (overlap)
 std::vector<std::vector<class cell *>> find_nonoverlap(std::vector<class cell *> me_unk, std::vector<class cell *> other_unk) {
 	std::vector<class cell *> overlap = std::vector<class cell *>();
@@ -595,60 +573,44 @@ inline int factorial(int x) {
 }
 
 
-// TODO: turn this into a templated thing (any type, vector or list) and move o basegame
-// return a random cell from the provided list, or NULL if the list is empty
-class cell * rand_from_list(std::list<class cell *> * fromme) {
-	if ((*fromme).empty()) {
-		return NULL;
-	}
-	int f = rand() % (*fromme).size();
-
-	std::list<class cell *>::iterator iter = (*fromme).begin();
-	for (int i = 0; i < f; i++) {
-		iter++;
-	}
-	return *iter;
-}
-
-
-
 // **************************************************************************************
+// smartguess functions
+// ROADMAP
+// TODO: update this roadmap with the "chain solver" strategy
+// 1)build the pods from visible, allow for dupes, no link cells yet. is stored in the "master chain". don't modify interior_unk yet
+// 2)iterate over pods, check for dupes and subsets (call find_nonoverlap on each pod with root in 5x5 around my root)
+// note if a pod becomes 100% or 0%, loop until no changes happen
+// 3)if any pods became 100% or 0%, return with those
+// 4)iterate again, removing pod contents from 'interior_unk'. Done here so there are fewer dupe pods, less time searching thru interior_unk
 
-// laboriously determine the % risk of each unknown cell and choose the one with the lowest risk to return
-// can completely solve the puzzle, too; therefore it can return multiple cells to clear or to flag
-struct smartguess_return smartguess() {
-	struct smartguess_return results;
-	// ROADMAP
-	// 1)build the pods from visible, allow for dupes, no link cells yet. is stored in the "master chain". don't modify interior_unk yet
-	// 2)iterate over pods, check for dupes and subsets (call find_nonoverlap on each pod with root in 5x5 around my root)
-	// note if a pod becomes 100% or 0%, loop until no changes happen
-	// 3)if any pods became 100% or 0%, return with those
-	// 4)iterate again, removing pod contents from 'interior_unk'. Done here so there are fewer dupe pods, less time searching thru interior_unk
+// if interior_unk is empty, then skip the following:
+// 5)iterate again, building links to anything within 5x5(only for ME so there are no dupes)
+// 6)iterate/recurse, identifying subchains
+// iterate AGAIN, separating them into a VECTOR of chains (set size beforehand so i can index into the vector)
+// at the same time, turn "cell_list" into a simple number, and clear the actual list???
+// create an 'empty list' with size=0, capacity=0, and copy it onto each cell_list so recursing uses less memory
+// 7)for each chain, recurse (chain is only argument) and get back max/min for that chain
+// !!!!!!!!!!!!!!!!!!!!!
+// sum all the max/min, concat to # of mines remaining, average the two (perhaps do something fancier? dunno)
+// 8)calculate interior_risk
 
-	// if interior_unk is empty, then skip the following:
-	// 5)iterate again, building links to anything within 5x5(only for ME so there are no dupes)
-	// 6)iterate/recurse, identifying chains
-	// iterate AGAIN, separating them into a VECTOR of chains (set size beforehand so i can index into the vector)
-	// at the same time, turn "cell_list" into a simple number, and clear the actual list???
-	// create an 'empty list' with size=0, capacity=0, and copy it onto each cell_list so recursing uses less memory
-	// 7)for each chain, recurse (chain is only argument) and get back max/min for that chain
-	// !!!!!!!!!!!!!!!!!!!!!
-	// sum all the max/min, concat to # of mines remaining, average the two (perhaps do something fancier? dunno)
-	// 8)calculate interior_risk
-
-	// 9)iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
-	// 10)find the minimum risk from anything in the border cells (pods) and any cells with that risk
-	// 11)decide between border and interior, call 'rand_from_list' and return
+// 9)iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
+// 10)find the minimum risk from anything in the border cells (pods) and any cells with that risk
+// 11)decide between border and interior, call 'rand_from_list' and return
 
 
 
-	static struct riskholder myriskholder;
-	if (myriskholder.riskarray.empty()) { // because it's static, init it like this only once
-		myriskholder = riskholder(myruninfo.SIZEX_var, myruninfo.SIZEY_var);
-	}
 
-	struct chain master_chain; // list of pods
-	std::list<class cell *> interior_list = mygame.unklist;
+// build and optimize the master chain that will be used for smartguess... encapsulates steps 1/2/3 of original 11-stage plan
+// also apply "advanced" versions of nonoverlap-safe and nonoverlap-flag; partial matches and chaining logic rules together
+// may identify some cells as "definite safe" or "definite mine", and will reveal/flag them internally
+// if no cells are flagged/cleared, will output the master chain thru input arg for passing to full recursive function below
+// TODO: consider rolling steps 4?/5/6 into this as well?
+// return: 1=win/-1=loss/0=continue (winning is rare but theoretically possible, but cannot lose unless something is seriously out of whack)
+int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
+
+	std::list<class cell *> clearme;
+	std::list<class cell *> flagme;
 
 	// step 1: iterate over field, get 'visible' cells, use them as roots to build pods.
 	// non-optimized: includes duplicates, before pod-subtraction. interior_unk not yet modified.
@@ -656,63 +618,103 @@ struct smartguess_return smartguess() {
 	for (int y = 0; y < myruninfo.SIZEY_var; y++) {
 		for (int x = 0; x < myruninfo.SIZEX_var; x++) { // iterate over each cell
 			if (mygame.field[x][y].get_status() == VISIBLE) {
-				master_chain.podlist.push_back(pod(&mygame.field[x][y])); // constructor gets adj unks for the given root
+				buildme->podlist.push_back(pod(&mygame.field[x][y])); // constructor gets adj unks for the given root
 			}
 		}
 	}
 
 	// step 2: iterate over pods, check for dupes and subsets (call find_nonoverlap on each pod with root in 5x5 around my root)
-	// note if a pod becomes 100% or 0%... repeat until no changes are done.
-	// when deleting pods, what remains will still be in sorted order
+	// this is where the "advanced solving" comes into play
+	// note if a pod becomes 100% or 0%... repeat until no changes are done. when deleting pods, what remains will still be in sorted order
 	bool changes;
 	do {
 		changes = false;
-		for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
-			// to find pods that may be dupes or subsets, use one of the following methods:
-			for (int b = -2; b < 3; b++) {
-				for (int a = -2; a < 3; a++) {
-					if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
-					class cell * other = mygame.cellptr(podit->root->x + a, podit->root->y + b);
-					if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; } // only examine the visible cells
-					std::list<struct pod>::iterator otherpod = master_chain.root_to_pod(other);
-					if (otherpod == master_chain.podlist.end()) { continue; }
-					// for each pod 'otherpod' with root within 5x5 found...
-					std::vector<std::vector<class cell *>> n = find_nonoverlap(podit->cell_list, otherpod->cell_list);
-					if (n[0].empty()) {
-						changes = true;
-						if (n[1].empty()) {
-							// is it a total duplicate? if yes, delete OTHER (not me), OTHER is somewhere later in the list
-							master_chain.podlist.erase(otherpod);
-						} else {
-							// if podit has no uniques but otherpod does, then podit is subset of otherpod... SUBTRACT from otherpod, leave podit unchanged
-							otherpod->mines -= podit->mines; otherpod->cell_list = n[1];
-							// if a pod would become 100 or 0, otherpod would do it here. is it possible to get dupes if I check it here?...
-							float z = otherpod->risk();
-							if (z == 0.) {
-								// add all cells in otherpod to resultlist[0]
-								results.clearme.insert(results.clearme.end(), otherpod->cell_list.begin(), otherpod->cell_list.end());
-							} else if (z == 100.) {
-								// add all cells in otherpod to resultlist[1]
-								results.flagme.insert(results.flagme.end(), otherpod->cell_list.begin(), otherpod->cell_list.end());
-							}
+		for (std::list<struct pod>::iterator podit = buildme->podlist.begin(); podit != buildme->podlist.end(); podit++) {
+			for (int b = -2; b < 3; b++) { for (int a = -2; a < 3; a++) { // iterate over 5x5
+				if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
+				class cell * other = mygame.cellptr(podit->root->x + a, podit->root->y + b);
+				if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; } // if the cell exists and is visible...
+				std::list<struct pod>::iterator otherpod = buildme->root_to_pod(other);// ...then it must be a root, find its pod in the chain!
+
+				if (otherpod == buildme->podlist.end()) { continue; } // TODO: i'm not convinced this is good?
+
+				// for each pod 'otherpod' with root within 5x5 found...
+				std::vector<std::vector<class cell *>> n = find_nonoverlap(podit->cell_list, otherpod->cell_list);
+				if (n[0].empty()) {		// means podit <= otherpod
+					changes = true;
+					if (n[1].empty()) { // means podit == otherpod
+						// if total duplicate, delete OTHER (not me), OTHER is somewhere later in the list
+						buildme->podlist.erase(otherpod);
+					} else {			// means podit < otherpod
+						// if podit has no uniques but otherpod does, then podit is subset of otherpod... reduce otherpod to be only its uniques
+						otherpod->mines -= podit->mines;
+						otherpod->cell_list = n[1];
+						// if a pod would become 100 or 0, otherpod would do it here.
+						float z = otherpod->risk();
+						if (z == 0.) {
+							// add all cells in otherpod to resultlist[0]
+							clearme.insert(clearme.end(), otherpod->cell_list.begin(), otherpod->cell_list.end());
+						} else if (z == 100.) {
+							// add all cells in otherpod to resultlist[1]
+							flagme.insert(flagme.end(), otherpod->cell_list.begin(), otherpod->cell_list.end());
 						}
 					}
 				}
-			}
-
+			}}
 		} // end for each pod
 	} while (changes);
 
-	// step 3: if any pods were found to be 100 or 0 when optimizing, just return them now
-	if (!results.empty()) {
-		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, optimization found %i clear and %i flag\n", results.clearme.size(), results.flagme.size());
-		results.method = 0;
-		return results;
+	if (clearme.size() || flagme.size()) {
+		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, optimization found %i clear and %i flag\n", clearme.size(), flagme.size());
 	}
+
+	// step 3: clear the clearme and flag the flagme
+	for (std::list<class cell *>::iterator cit = clearme.begin(); cit != clearme.end(); cit++) { // clear-list
+		int r = mygame.reveal(*cit);
+		if (r == -1) {
+			myprintfn(2, "ERR: Unexpected loss during hunting zerolist reveal, must investigate!!\n");
+			assert(0);
+			return -1;
+		}
+		*thingsdone += r;
+	}
+	for (std::list<class cell *>::iterator fit = flagme.begin(); fit != flagme.end(); fit++) { // flag-list
+		int r = mygame.set_flag(*fit);
+		(*thingsdone)++;
+		if (r == 1) {
+			// game won!
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+
+
+
+
+
+
+// laboriously determine the % risk of each unknown cell and choose the one with the lowest risk to return
+// can completely solve the puzzle, too; therefore it can return multiple cells to clear or to flag
+struct smartguess_return smartguess(struct chain * master_chain, struct game_stats * gstats) {
+	struct smartguess_return results;
+	std::list<class cell *> interior_list = mygame.unklist;
+
+
+	static struct riskholder myriskholder;
+	if (myriskholder.riskarray.empty()) { // because it's static, init it like this only once
+		myriskholder = riskholder(myruninfo.SIZEX_var, myruninfo.SIZEY_var);
+	}
+
+
+
+
 
 	// step 4: now that master_chain is refined, remove pod contents (border unk) from interior_unk
 	// will still have some dupes (link cells) but much less than if I did this earlier
-	for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
+	for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
 		for (int i = 0; i < podit->size(); i++) {
 			interior_list.remove(podit->cell_list[i]); // remove from interior_list by value (find and remove)
 		}
@@ -721,14 +723,14 @@ struct smartguess_return smartguess() {
 	float interior_risk = 150.;
 	if (!interior_list.empty() || (mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN)) {
 		// step 5: iterate again, building links to anything within 5x5(only set MY links)
-		for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
+		for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
 			for (int b = -2; b < 3; b++) {
 				for (int a = -2; a < 3; a++) {
 					if (a == 0 && b == 0) { continue; } // skip myself BUT INCLUDE THE CORNERS
 					class cell * other = mygame.cellptr(podit->root->x + a, podit->root->y + b);
 					if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; } // only examine the visible cells
-					std::list<struct pod>::iterator otherpod = master_chain.root_to_pod(other);
-					if (otherpod == master_chain.podlist.end()) { continue; } // some pods will have been optimized away
+					std::list<struct pod>::iterator otherpod = master_chain->root_to_pod(other);
+					if (otherpod == master_chain->podlist.end()) { continue; } // some pods will have been optimized away
 																			  // for each pod 'otherpod' with root within 5x5 found...
 					std::vector<std::vector<class cell *>> n = find_nonoverlap(podit->cell_list, otherpod->cell_list);
 					// ... only create links within podit!
@@ -741,10 +743,10 @@ struct smartguess_return smartguess() {
 
 		// step 6: identify chains and sort the pods into a VECTOR of chains... 
 		// at the same time, turn "cell_list" into a simple number, and clear the actual list so it uses less memory while recursing
-		int numchains = master_chain.identify_chains();
+		int numchains = master_chain->identify_chains();
 		// if there are only a few mines left, then don't eliminate the cell_list contents
 		bool reduce = (mygame.get_mines_remaining() > RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN);
-		std::vector<struct chain> listofchains = master_chain.sort_into_chains(numchains, reduce);
+		std::vector<struct chain> listofchains = master_chain->sort_into_chains(numchains, reduce);
 
 		// step 7: for each chain, recurse (depth, chain are only arguments) and get back list of answer allocations
 		// handle the multiple podwise_retun objects, just sum their averages
@@ -758,7 +760,7 @@ struct smartguess_return smartguess() {
 			if (mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) { retholder[s] = asdf; }
 			if (ACTUAL_DEBUG || recursion_safety_valve) myprintfn(2, "DEBUG: in smart-guess, chain %i with %i pods found %i solutions\n", s, listofchains[s].podlist.size(), asdf.size());
 			if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, chain %i eliminated %.3f%% of allocations as redundant\n", s, (100. * asdf.efficiency()));
-			myrunstats.smartguess_valves_triggered += recursion_safety_valve;
+			gstats->smartguess_valves_tripped += recursion_safety_valve;
 		}
 
 
@@ -819,8 +821,8 @@ struct smartguess_return smartguess() {
 			int bordermines = mygame.get_mines_remaining() - interiormines;
 
 			if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, border_avg/ceiling/border_actual = %.3f / %i / %i\n", border_allocation, mygame.get_mines_remaining(), bordermines);
-			myrunstats.smartguess_attempts++;
-			myrunstats.smartguess_diff += (border_allocation - float(bordermines)); // accumulating a less-negative number
+			gstats->smartguess_attempts++;
+			gstats->smartguess_diff += (border_allocation - float(bordermines)); // accumulating a less-negative number
 			////////////////////////////////////////////////////////////////////////
 
 
@@ -832,7 +834,7 @@ struct smartguess_return smartguess() {
 
 	  // now, find risk for each border cell from the pods
 	  // step 10: iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
-	for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
+	for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
 		float podrisk = podit->risk();
 		for (int i = 0; i < podit->cell_list.size(); i++) {
 			myriskholder.addrisk(podit->cell_list[i], podrisk);
@@ -1075,145 +1077,247 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 
 
 // **************************************************************************************
-// multi-cell strategies
+// solver rules & strategies
+
+
+// STRATEGY: single-cell logic
+// firstly, if an X-effective cell is next to X unknowns, flag them all.
+// secondly, if an X-adjacency cell is next to X flags (AKA effective = 0), all remaining unknowns are SAFE and can be revealed.
+// veryveryvery simple to understand. internally identifies and flags/clears cells. also responsible for setting state to "satisfied"
+// when appropriate. no special stats to track here, except for the "singlecell total action count".
+// return: 1=win/-1=loss/0=continue (cannot lose tho, unless something is seriously out of whack)
+int strat_singlecell(class cell * me, int * thingsdone) {
+	std::vector<class cell *> unk = mygame.filter_adjacent(me, UNKNOWN);
+	int r = 0;
+	// strategy 1: if an X-adjacency cell is next to X unknowns, flag them all
+	if ((me->get_effective() != 0) && (me->get_effective() == unk.size())) {
+		// flag all unknown cells
+		for (int i = 0; i < unk.size(); i++) {
+			(*thingsdone)++; // inc by # of cells flagged (one)
+			r = mygame.set_flag(unk[i]);
+			if (r == 1) { return 1; } // validated win! time to return!
+		}
+		unk.clear(); // must clear the unklist for next stage to work right
+	}
+
+	// strategy 2: if an X-adjacency cell is next to X flags, all remaining unknowns are NOT flags and can be revealed
+	if (me->get_effective() == 0) {
+		// reveal all adjacent unknown squares
+		for (int i = 0; i < unk.size(); i++) {
+			r = mygame.reveal(unk[i]);
+			if (r == -1) {
+				myprintfn(2, "ERR: Unexpected loss during SC satisfied-reveal, must investigate!!\n");
+				assert(1 == 2);
+				return -1;
+			}
+			*thingsdone += r; // inc by # of cells revealed
+		}
+		me->set_status_satisfied();
+	}
+	return 0;
+}
+
+
 
 // STRATEGY: 121 cross
-// looks for a very specific arrangement of visible/unknown cells; the center is probably safe
-// unlike the other strategies, this isn't based in logic so much... this is just a pattern I noticed
-// return # cleared if it is applied, 0 otherwise, -1 if it unexpectedly lost
-// NEW VERSION: don't place any flags, only reveal the center cell (it might help)
-int strat_121_cross(class cell * center) {
-	if (center->get_effective() != 2)
-		return 0;
+// looks for a specific arrangement of visible/unknown cells; if found, I can clear up to 2 cells.
+// unlike the other strategies, this isn't based in logic so much... this is just a pattern I noticed.
+// return: 1=win/-1=loss/0=continue (except cannot win, ever, and cannot lose unless something is seriously out of whack)
+// NEW FORMAT: IN-PLACE VERSION, clears the cells here
+int strat_121_cross_IP(class cell * center, struct game_stats * gstats, int * thingsdone) {
+	if (center->get_effective() != 2) { return 0; }
 	std::vector<class cell *> adj = mygame.get_adjacent(center);
 	if (adj.size() == 3) // must be in a corner
 		return 0;
 
-	int retme = 0;
-	int r = 0;
-	int s = 0;
-	class cell * aa = mygame.cellptr((center->x) + 1, center->y);
-	class cell * bb = mygame.cellptr((center->x) - 1, center->y);
-	class cell * cc = mygame.cellptr(center->x, (center->y) + 1);
-	class cell * dd = mygame.cellptr(center->x, (center->y) - 1);
-
+	int r = 0; int s = 0;
+	class cell * right =mygame.cellptr((center->x) + 1, center->y);
+	class cell * left =	mygame.cellptr((center->x) - 1, center->y);
+	class cell * down = mygame.cellptr(center->x, (center->y) + 1);
+	class cell * up =	mygame.cellptr(center->x, (center->y) - 1);
 
 	// assuming 121 in horizontal line:
-	if ((aa != NULL) && (bb != NULL) && (aa->get_status() == VISIBLE) && (bb->get_status() == VISIBLE)
-		&& (aa->get_effective() == 1) && (bb->get_effective() == 1)) {
-		r = mygame.reveal(cc);
-		s = mygame.reveal(dd);
+	if ((right != NULL) && (left != NULL) && (right->get_status() == VISIBLE) && (left->get_status() == VISIBLE)
+		&& (right->get_effective() == 1) && (left->get_effective() == 1)) {
+		r = mygame.reveal(down);
+		s = mygame.reveal(up);
 		if ((r == -1) || (s == -1)) {
+			myprintfn(2, "ERR: Unexpected loss during MC 121-cross, must investigate!!\n");
+			assert(0);
 			return -1;
 		} else {
-			return (r + s);
+			gstats->strat_121 += (r != 0 || s != 0);
+			*thingsdone += (r + s);
+			return 0;
 		}
 	}
 
 	// assuming 121 in vertical line:
-	if ((cc != NULL) && (dd != NULL) && (cc->get_status() == VISIBLE) && (dd->get_status() == VISIBLE)
-		&& (cc->get_effective() == 1) && (dd->get_effective() == 1)) {
-		r = mygame.reveal(aa);
-		s = mygame.reveal(bb);
+	if ((down != NULL) && (up != NULL) && (down->get_status() == VISIBLE) && (up->get_status() == VISIBLE)
+		&& (down->get_effective() == 1) && (up->get_effective() == 1)) {
+		r = mygame.reveal(right);
+		s = mygame.reveal(left);
 		if ((r == -1) || (s == -1)) {
+			myprintfn(2, "ERR: Unexpected loss during MC 121-cross, must investigate!!\n");
+			assert(0);
 			return -1;
 		} else {
-			return (r + s);
+			gstats->strat_121 += (r != 0 || s != 0);
+			*thingsdone += (r + s);
+			return 0;
 		}
 	}
+	return 0;
+}
+
+
+
+// STRATEGY: nonoverlap-flag
+//If two cells are X and X + 1, and the unknowns around X + 1 fall inside unknowns around X except for ONE, that
+//non-overlap cell must be a mine
+//Expanded to the general case: if two cells are X and X+Z, and X+Z has exactly Z unique cells, then all those cells must be mines
+// Compare against 5x5 region minus corners.
+// X(other) = 1/2/3/4,  Z = 1/2/3/4/5/6
+// return: 1=win/-1=loss/0=continue (except cannot lose here because it doesn't reveal cells here)
+// NEW FORMAT: IN-PLACE VERSION, clears the cells here
+int strat_nonoverlap_flag_IP(class cell * center, struct game_stats * gstats, int * thingsdone) {
+	if ((center->get_effective() < 2) || (center->get_effective() == 8)) { return 0; } // center must be 2-7
+	std::vector<class cell *> me_unk = mygame.filter_adjacent(center, UNKNOWN);
+	std::vector<class cell *> other_unk;
+	for (int b = -2; b < 3; b++) { for (int a = -2; a < 3; a++) {
+		if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
+		class cell * other = mygame.cellptr(center->x + a, center->y + b);
+		if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; }			// must exist and be already revealed
+		if ((other->get_effective() == 0) || (other->get_effective() > 4)) { continue; }	// other must be 1/2/3/4
+		int z = center->get_effective() - other->get_effective();
+		if (z < 1) { continue; }														// z must be 1 or greater
+
+		other_unk = mygame.filter_adjacent(other, UNKNOWN);
+
+		std::vector<std::vector<class cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
+		// checking if OTHER is a subset of ME, AKA ME has some extra unique cells
+		if (nonoverlap[0].size() == z) {
+			gstats->strat_nov_flag++;
+			for (int i = 0; i < z; i++) {
+				(*thingsdone)++; // inc once for each flag placed
+				int r = mygame.set_flag(nonoverlap[0][i]);
+				if (r == 1) { return 1; }
+			}
+			return 0;
+		}
+	}}
 
 	return 0;
 }
+
+
 
 
 // STRATEGY: nonoverlap-safe
 //If the adj unknown tiles of a 1/2/3 -square are a pure subset of the adj unknown tiles of another
 //square with the same value, then the non-overlap section can be safely revealed!
-//Technically works with 4-squares too, because the max overlap between two cells is 4, but only if
-// one has 4 adj unks and the other has 5+... in that case, just use single-cell logic
 //Compare against any other same-value cell in the 5x5 region minus corners
-// return # of times it was applied, -1 if unexpected loss
-int strat_nonoverlap_safe(class cell * center) {
-	if (center->get_effective() > 3)
-		return false;
+// return: 1=win/-1=loss/0=continue (except cannot win, ever, and cannot lose unless something is seriously out of whack)
+// NEW FORMAT: IN-PLACE VERSION, clears the cells here
+int strat_nonoverlap_safe_IP(class cell * center, struct game_stats * gstats, int * thingsdone) {
+	if (center->get_effective() > 3) { return 0; } // only works for center = 1/2/3
 	std::vector<class cell *> me_unk = mygame.filter_adjacent(center, UNKNOWN);
 	std::vector<class cell *> other_unk;
 	int retme = 0;
-	for (int b = -2; b < 3; b++) {
-		for (int a = -2; a < 3; a++) {
-			if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0))
-				continue; // skip myself and also the corners
-			class cell * other = mygame.cellptr(center->x + a, center->y + b);
-			if ((other == NULL) || (other->get_status() != VISIBLE))
-				continue;
-			if (center->get_effective() != other->get_effective()) // the two being compared must be equal
-				continue;
-			other_unk = mygame.filter_adjacent(other, UNKNOWN);
-			if (me_unk.size() > other_unk.size())
-				continue; //shortcut, saves time, nov-safe only
+	for (int b = -2; b < 3; b++) { for (int a = -2; a < 3; a++) {
+		if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
+		class cell * other = mygame.cellptr(center->x + a, center->y + b);
+		if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; }	// must exist and be already revealed
+		if (center->get_effective() != other->get_effective()) { continue; }	// the two being compared must have same effective value
+		other_unk = mygame.filter_adjacent(other, UNKNOWN);
+		if (me_unk.size() >= other_unk.size()) { continue; } // shortcut, can't be subset if it's bigger or equal
 
-			std::vector<std::vector<class cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
-			// nov-safe needs to know the length of ME and the contents of OTHER
-			if (nonoverlap[0].empty() && !(nonoverlap[1].empty())) {
-				int retme_sub = 0;
-				for (int i = 0; i < nonoverlap[1].size(); i++) {
-					int r = mygame.reveal(nonoverlap[1][i]);
-					if (r == -1) {
-						return -1;
-					}
-					retme_sub += r;
+		std::vector<std::vector<class cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
+		// checking if ME is a subset of OTHER
+		if (nonoverlap[0].empty() && !(nonoverlap[1].empty())) {
+			int retme_sub = 0;
+			for (int i = 0; i < nonoverlap[1].size(); i++) {
+				int r = mygame.reveal(nonoverlap[1][i]);
+				if (r == -1) {
+					myprintfn(2, "ERR: Unexpected loss during MC nonoverlap-safe, must investigate!!\n");
+					assert(0);
+					return -1;
 				}
-				retme += retme_sub; // increment by how many were cleared
-				me_unk = mygame.filter_adjacent(center, UNKNOWN); // update me_unk, then continue iterating thru the 5x5
+				retme_sub += r;
 			}
+			*thingsdone += retme_sub; // increment by how many were cleared
+			gstats->strat_nov_safe += bool(retme_sub);
+			return 0;
+			//me_unk = mygame.filter_adjacent(center, UNKNOWN); // update me_unk, then continue iterating thru the 5x5
 		}
-	}
+	}}
 
-	return retme;
+	return 0;
 }
 
-// STRATEGY: nonoverlap-flag
-//If two cells are X and X + 1, and the unknowns around X + 1 fall inside unknowns around X except for ONE, that
-//non - overlap cell must be a mine
-//Expanded to the general case: if two cells are X and X+Z, and X+Z has exactly Z unique cells, then all those cells
-//must be mines
-//Compare against 5x5 region minus corners
-//Can apply to any pair of numbers if X!=0 and Z!=0, I think?
-// returns 0 if nothing happened, 1 if flags were placed, -1 if game was WON
-int strat_nonoverlap_flag(class cell * center) {
-	if ((center->get_effective() <= 1) || (center->get_effective() == 8)) // center must be 2-7
+
+
+// I determined that the "queueing strategy" has no appreciable benefits compared to the "inline strategy"
+/*
+// return: 1=win/-1=loss/0=continue (except cannot win or lose here because it doesn't reveal cells here)
+// NEW FORMAT: QUEUEING VERSION, returns the cells to be cleared all at once
+int strat_121_cross_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * clearlist) {
+	if (center->get_effective() != 2) { return 0; }
+	std::vector<class cell *> adj = mygame.get_adjacent(center);
+	if (adj.size() == 3) // must be in a corner
 		return 0;
-	//print_field(3);
+
+	int r = 0; int s = 0;
+	class cell * right = mygame.cellptr((center->x) + 1, center->y);
+	class cell * left = mygame.cellptr((center->x) - 1, center->y);
+	class cell * down = mygame.cellptr(center->x, (center->y) + 1);
+	class cell * up = mygame.cellptr(center->x, (center->y) - 1);
+
+	// assuming 121 in horizontal line:
+	if ((right != NULL) && (left != NULL) && (right->get_status() == VISIBLE) && (left->get_status() == VISIBLE)
+		&& (right->get_effective() == 1) && (left->get_effective() == 1)) {
+		bool t = false;
+		if ((up != NULL) && (up->get_status() == UNKNOWN)) { t = true; clearlist->push_back(up); }
+		if ((down != NULL) && (down->get_status() == UNKNOWN)) { t = true; clearlist->push_back(down); }
+		if (t) { gstats->strat_121++; }
+		return 0;
+	}
+
+	// assuming 121 in vertical line:
+	if ((down != NULL) && (up != NULL) && (down->get_status() == VISIBLE) && (up->get_status() == VISIBLE)
+		&& (down->get_effective() == 1) && (up->get_effective() == 1)) {
+		bool t = false;
+		if ((left != NULL) && (left->get_status() == UNKNOWN)) { t = true; clearlist->push_back(left); }
+		if ((right != NULL) && (right->get_status() == UNKNOWN)) { t = true; clearlist->push_back(right); }
+		if (t) { gstats->strat_121++; }
+		return 0;
+	}
+	return 0;
+}
+
+// return: 1=win/-1=loss/0=continue (except cannot win or lose here because it doesn't reveal cells here)
+// NEW FORMAT: QUEUEING VERSION, returns the cells to be cleared all at once
+int strat_nonoverlap_flag_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * flaglist) {
+	if ((center->get_effective() < 2) || (center->get_effective() == 8)) { return 0; } // center must be 2-7
 	std::vector<class cell *> me_unk = mygame.filter_adjacent(center, UNKNOWN);
 	std::vector<class cell *> other_unk;
 	for (int b = -2; b < 3; b++) {
 		for (int a = -2; a < 3; a++) {
-			if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0))
-				continue; // skip myself and also the corners
+			if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
 			class cell * other = mygame.cellptr(center->x + a, center->y + b);
-			if ((other == NULL) || (other->get_status() != VISIBLE))
-				continue;
-			// valid pairs are me/other: 2/1, 3/2, and 3/1; currently only know that me==2 or 3
-			int z = 0;
-			if ((other->get_effective() != 0) && (other->get_effective() < center->get_effective())) {
-				z = center->get_effective() - other->get_effective();
-			} else
-				continue;
+			if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; }			// must exist and be already revealed
+			if ((other->get_effective() == 0) || (other->get_effective() > 4)) { continue; }	// other must be 1/2/3/4
+			int z = center->get_effective() - other->get_effective();
+			if (z < 1) { continue; }														// z must be 1 or greater
+
 			other_unk = mygame.filter_adjacent(other, UNKNOWN);
 
 			std::vector<std::vector<class cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
-			// nov-flag needs to know the length and contents of MY unique cells
+			// checking if OTHER is a subset of ME, AKA ME has some extra unique cells
 			if (nonoverlap[0].size() == z) {
-				int retval = 0;
-				for (int i = 0; i < z; i++) {
-					int r = mygame.set_flag(nonoverlap[0][i]);
-					retval++;
-					if (r == 1) {
-						// already validated win in the set_flag function
-						return -1;
-					}
-				}
-				return retval;
+				gstats->strat_nov_flag++;
+				flaglist->insert(flaglist->end(), nonoverlap[0].begin(), nonoverlap[0].end());
+				return 0;
 			}
 		}
 	}
@@ -1221,6 +1325,32 @@ int strat_nonoverlap_flag(class cell * center) {
 	return 0;
 }
 
+// return: 1=win/-1=loss/0=continue (except cannot win or lose here because it doesn't reveal cells here)
+// NEW FORMAT: QUEUEING VERSION, returns the cells to be cleared all at once
+int strat_nonoverlap_safe_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * clearlist) {
+	if (center->get_effective() > 3) { return 0; }
+	std::vector<class cell *> me_unk = mygame.filter_adjacent(center, UNKNOWN);
+	std::vector<class cell *> other_unk;
+	int retme = 0;
+	for (int b = -2; b < 3; b++) { for (int a = -2; a < 3; a++) {
+		if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
+		class cell * other = mygame.cellptr(center->x + a, center->y + b);
+		if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; }	// must exist and be already revealed
+		if (center->get_effective() != other->get_effective()) { continue; }	// the two being compared must have same effective value
+		other_unk = mygame.filter_adjacent(other, UNKNOWN);
+		if (me_unk.size() >= other_unk.size()) { continue; } // shortcut, can't be subset if it's bigger or equal
 
+		std::vector<std::vector<class cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
+		// checking if ME is a subset of OTHER
+		if (nonoverlap[0].empty() && !(nonoverlap[1].empty())) {
+			clearlist->insert(clearlist->end(), nonoverlap[1].begin(), nonoverlap[1].end());
+			gstats->strat_nov_safe++;
+			return 0;
+			//me_unk = mygame.filter_adjacent(center, UNKNOWN); // update me_unk, then continue iterating thru the 5x5
+		}
+	}}
 
+	return 0;
+}
+*/
 

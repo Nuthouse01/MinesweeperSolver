@@ -5,9 +5,15 @@
 
 
 
+#include <cstdlib> // rand, other stuff
+#include <cstdio> // printf
+#include <string> // for printing the histogram
+#include <vector> // used for histogram
+#include <chrono> // just because time(0) only has 1-second resolution
 
-extern class runinfo myruninfo;
-extern class game mygame;
+
+
+// didn't wanna extern anything but whatever
 extern bool FIND_EARLY_ZEROS_var;
 extern bool RANDOM_USE_SMART_var;
 
@@ -15,22 +21,31 @@ extern bool RANDOM_USE_SMART_var;
 // stats for a single game
 struct game_stats {
 	game_stats();
+	void print_gamestats(int screen, class game * gameptr, class runinfo * runinfoptr);
+
 	int strat_121, strat_nov_safe, strat_nov_flag; // number of times each MC strategy was used
-	int times_guessing; // number of times it needed to do hunting or guessing
+	int num_guesses; // number of times it needed to do any type of guessing
 	//records the phase transition history of solving the game, and the # of operations done in each phase
-	// ^#=hunting, G#=guessing, s#=single-cell, m#=multi-cell, A=advanced
+	// s#=single-cell, m#=multi-cell, O#=pre-smartguess optimization, W=win, X=lose, 
+	// ^#=smartguess, r#=randomguess, z#=zeroguess, A#=chain-solver
 	std::string trans_map;
 	bool began_solving; // did I begin solving things, or did I lose before anything could be done?
 	// TODO: if histogram is implemented and zerolist option is gone, this could be safely eliminated
 
-	void print_gamestats(int screen);
+	int smartguess_attempts;
+	float smartguess_diff;
+	int smartguess_valves_tripped;
 };
 
 // win/loss stats for a single program run
 struct run_stats {
 	run_stats();
+	void print_final_stats(class runinfo * runinfoptr);
+	void init_histogram(int num_mines);
+	void inc_histogram(int minesplaced);
+	void print_histogram(int numrows);
 
-	void print_final_stats();
+
 	long start;
 	int games_total;			// total games played to conclusion (not really needed but w/e)
 
@@ -45,14 +60,19 @@ struct run_stats {
 	int games_lost_lategame;	// 85-99% completed
 	int games_lost_unexpectedly;// losses from other situations (should be 0)
 
+	std::vector<int> game_loss_histogram;
+	// histogram: tracks how many games were lost with 1 mine remaining, 2 mines remaining, 3 mines remaining, etc
+	// but instead it's reversed, and counts how many games lost after placing 0 mines, 1 mine, 2 mines, etc (vector indices)
+	// TODO: decide if, when displayed, "0 placed" is part of the graphic or a separate number
+
 	int strat_121_total;
 	int strat_nov_safe_total;
 	int strat_nov_flag_total;
 	int num_guesses_total;
 
-	int smartguess_attempts;
-	float smartguess_diff;
-	int smartguess_valves_triggered;
+	int smartguess_attempts_total;
+	float smartguess_diff_total;
+	int smartguess_valves_tripped_total;
 	int games_with_eights;
 };
 

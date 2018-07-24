@@ -50,7 +50,6 @@ v4.1: Podwise-recursion returns a list of all the possible allocation numbers(so
 		Bugfix: forgot to multiply interior_risk by 100
 		Redid structure of hunting/guessing section to reduce redundant code
 		Changed 'always succeed' option to instead be 'pick zeroes until some logic is applied',
-		TODO: find a 'rabbithole' seed and figure out where to put limiters in the recursive alg
 v4.2: Removed the old smartguess code, new version gives comparable results but vastly superior speed
 v4.3: Changed the podwise_return::avg to discard anything bigger than the ceiling instead of concatting
 		NOTE: this is a potential source of error in the future, if I put in limiters and don't find all possible allocs
@@ -107,15 +106,21 @@ v4.9: Logs go to LOGS folder, creates the folder if its not there already
 		Created 'stats' file
 		Slightly changed how some 'globals' are initialized
 		
-		
-		
+v4.10: Implemented game-loss histogram! Still need to clean up stats as a result of this
+			(TODO: cleanup stat tracking and end-game printout, remove obsolete stuff)
+		Cleaned up #includes, reduced to only what's necessary where its necessary
+		Made single-cell logic into a function, created new convention/standard for the logic/rule functions
+		Refined the multi-cell logic, turns out 'queueing' strategy doesn't offer significant improvement
+		Moved rand_from_list to basegame, split into list/vector versions and templatized 
+		Split "advanced solving/chain optimization" into its own function, returns chain and handles cells internally if needed
+		Smartguess accumulates stats into game_stats, so nothing changes run_stats until the end-of-game
 		
 		
 		
 TODO:
-*multi-cell logic uses "queing" system: change functions to return list of cells to flag/clear
+*rename "multi-cell logic" to "bi-cell logic" and rename the advanced solving to "multi-cell logic"?
+*break "smartguess" into multiple smaller functions??? unsure
 
-*split "advanced solving/chain optimization" into its own function, returns chain and/or cells to flag/clear
 *refine iteration method in advanced solving? 
 	currently iterate until nothing changes
 	perhaps use random order? nah thats a bad plan
@@ -123,8 +128,7 @@ TODO:
 *add NOV-flag to advanced solving, pair-compare at least, perhaps even multi-compare (what are the limits?)
 *NOTE: forget about the "different orders produce different results" thing, and dont worry too hard about getting NOV-flag perfect
 
-*instead of 15/85/99, record/build/display histogram of solver progress after loss
-*from guessing function, return 'risk/safety/luck' value along with chosen cell; accumulate as game goes on
+*from guessing function, return 'risk/safety/luck' value along with chosen cell; accumulate as game goes on, print in gamestats
 
 *re-test and probably eliminate "chain recheck depth" feature
 
@@ -142,8 +146,27 @@ TODO:
 		
 		
 		
+	endsolver: (usually doesn't find any conclusive answer)
+		if near the end, recursion returns more info
+			recurse to find discrete allocations to satisfy each chain
+		if near the end, use this extra info
+			check if any combinations of discreet answers fit
+			if nothing works, continue with smartguess or perfectmode
 		
+	smartguess:
+		if interior_list is not empty, run recursion
+			recurse to find most likely allocation number for each chain
+			find interior_cell risk
+		find border_cell risk via contributing pods
+		guess
 		
+	perfectmode:
+		always run recursion
+			recurse to find most likely allocation number for each chain
+			also store status of each cell in aggregate, clear/flag
+			find interior_cell risk same as smartguess, if there is any interior_cell
+		know border_cell risk from recursion statistics
+		guess, might find definite clear/flag cells (not caught in optimization stage)
 		
 		
 		

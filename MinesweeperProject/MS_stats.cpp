@@ -4,31 +4,10 @@
 
 
 
-// TODO: selectively remove these includes to whittle down what is actually needed/used in 'solver'
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <string>
-#include <cstring>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <list>
-#include <cassert> // so it aborts when something wierd happens
-#include <time.h>
-
-
-#include <chrono> // just because time(0) only has 1-second resolution
-#include <cstdarg> // for variable-arg function-macro
-#include <algorithm> // for pod-based intelligent recursion
-#include <random> // because I don't like using sequential seeds, or waiting when going very fast
-
-
-#include "MS_stats.h" // include myself
 #include "MS_settings.h"
 #include "MS_basegame.h" // need this for myprintfn and print_field
 
+#include "MS_stats.h" // include myself
 
 
 
@@ -40,8 +19,11 @@ game_stats::game_stats() {
 	strat_121 = 0;
 	strat_nov_safe = 0;
 	strat_nov_flag = 0;
-	times_guessing = 0;
-	began_solving = false;
+	num_guesses = 0;
+	began_solving = false; //
+	smartguess_attempts = 0;
+	smartguess_diff = 0.;
+	smartguess_valves_tripped = 0;
 }
 
 // simple init, also sets start time
@@ -55,27 +37,26 @@ run_stats::run_stats() {
 	games_won_noguessing = 0;
 	games_won_guessing = 0;
 	games_lost = 0;
-	games_lost_beginning = 0;
 	games_lost_unexpectedly = 0;
-	games_lost_lategame = 0;
-	games_lost_midgame = 0;
-	games_lost_earlygame = 0;
+	games_lost_beginning = 0; //
+	games_lost_lategame = 0; //
+	games_lost_midgame = 0; //
+	games_lost_earlygame = 0; //
 	strat_121_total = 0;
 	strat_nov_safe_total = 0;
 	strat_nov_flag_total = 0;
-	smartguess_attempts = 0;
-	smartguess_diff = 0.;
-	smartguess_valves_triggered = 0;
-	games_with_eights = 0;
 	num_guesses_total = 0;
+	smartguess_attempts_total = 0;
+	smartguess_diff_total = 0.;
+	smartguess_valves_tripped_total = 0;
+	games_with_eights = 0;
+
+	game_loss_histogram.clear();
 }
 
 
-
-
-
 // prints everything nice and formatted; only happens once, so it could be in-line but this is better encapsulation
-void run_stats::print_final_stats() {
+void run_stats::print_final_stats(class runinfo * runinfoptr) {
 	// calculate total time elapsed and format for display
 	std::chrono::milliseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >(
 		std::chrono::system_clock::now().time_since_epoch()
@@ -92,10 +73,18 @@ void run_stats::print_final_stats() {
 	sprintf_s(timestr, "%i:%02i:%06.3f", hr, min, sec);
 
 	// print/log overall results (always print to terminal and log)
-	myprintfn(2, "\nDone playing all %i games, displaying results! Time = %s\n\n", myruninfo.NUM_GAMES_var, timestr);
+	myprintfn(2, "\n\nDone playing all %i games, displaying results! Time = %s\n\n", runinfoptr->NUM_GAMES_var, timestr);
+
+	//if ((games_lost - game_loss_histogram[0]) > 50) {
+		print_histogram(HISTOGRAM_RESOLUTION);
+	//} else {
+	//	myprintfn(2, "Histogram skipped because of small sample size\n\n");
+	//}
+
+
 	myprintfn(2, "MinesweeperSolver version %s\n", VERSION_STRING_def);
-	myprintfn(2, "Games used X/Y/mines = %i/%i/%i, mine density = %4.1f%%\n", myruninfo.SIZEX_var, myruninfo.SIZEY_var, myruninfo.NUM_MINES_var,
-		float(100. * float(myruninfo.NUM_MINES_var) / float(myruninfo.SIZEX_var * myruninfo.SIZEY_var)));
+	myprintfn(2, "Games used X/Y/mines = %i/%i/%i, mine density = %4.1f%%\n", runinfoptr->SIZEX_var, runinfoptr->SIZEY_var, runinfoptr->NUM_MINES_var,
+		float(100. * float(runinfoptr->NUM_MINES_var) / float(runinfoptr->SIZEX_var * runinfoptr->SIZEY_var)));
 	if (FIND_EARLY_ZEROS_var) {
 		myprintfn(2, "Using 'hunting' method = succeed early (uncover only zeroes until solving can begin)\n");
 	} else {
@@ -103,8 +92,8 @@ void run_stats::print_final_stats() {
 	}
 	if (RANDOM_USE_SMART_var) {
 		myprintfn(2, "Used 'guessing' mode = smartguess (slower but increased winrate)\n");
-		myprintfn(2, "    Smartguess border est. avg deviation:   %+7.4f\n", (smartguess_diff / float(smartguess_attempts)));
-		myprintfn(2, "    Times when recursion got out of hand:%5i\n", smartguess_valves_triggered);
+		myprintfn(2, "    Smartguess border est. avg deviation:   %+7.4f\n", (smartguess_diff_total / float(smartguess_attempts_total)));
+		myprintfn(2, "    Times when recursion got out of hand:%5i\n", smartguess_valves_tripped_total);
 	} else {
 		myprintfn(2, "Used 'guessing' mode = guess randomly (lower winrate but faster)\n");
 	}
@@ -131,22 +120,101 @@ void run_stats::print_final_stats() {
 	}
 	myprintfn(2, "\n");
 
-	fflush(myruninfo.logfile);
+	fflush(runinfoptr->logfile);
 }
-
 
 
 
 // print the stats of the current game, and some whitespace below
 // if SCREEN=0, don't print anything. if SCREEN=1, print to log. if SCREEN=2, print to both.
-void game_stats::print_gamestats(int screen) {
-	mygame.print_field(3, screen);
+void game_stats::print_gamestats(int screen, class game * gameptr, class runinfo * runinfoptr) {
+	gameptr->print_field(3, screen);
 	myprintfn(screen, "Transition map: %s\n", trans_map.c_str());
 	myprintfn(screen, "121-cross hits: %i, nonoverlap-safe hits: %i, nonoverlap-flag hits: %i\n",
 		strat_121, strat_nov_safe, strat_nov_flag);
-	myprintfn(screen, "Cells guessed: %i\n", times_guessing);
-	myprintfn(screen, "Flags placed: %i / %i\n\n\n", myruninfo.NUM_MINES_var - mygame.get_mines_remaining(), myruninfo.NUM_MINES_var);
-	fflush(myruninfo.logfile);
+	myprintfn(screen, "Cells guessed: %i\n", num_guesses);
+	myprintfn(screen, "Flags placed: %i / %i\n\n\n", runinfoptr->NUM_MINES_var - gameptr->get_mines_remaining(), runinfoptr->NUM_MINES_var);
+	// TODO: create and also print "luck value"
+	fflush(runinfoptr->logfile);
 }
+
+
+// once number of mines is known, set up the histogram
+void run_stats::init_histogram(int num_mines) {
+	game_loss_histogram.clear();
+	game_loss_histogram.resize(num_mines, 0);
+	game_loss_histogram.shrink_to_fit();
+}
+// increment the correct entry
+void run_stats::inc_histogram(int minesplaced) {
+	game_loss_histogram[minesplaced]++;
+}
+// print a bar graph of the losses, 10? rows
+// excludes any "first move" losses, game_loss_histogram[0]
+// NOTE: when displayed, bars will be horizontal rows, (TODO: or will it?) but when talking about it, I will picture them as vertical columns
+// when losing resolution horizontally (from 89 entries to 10), must interpolate to prevent spikes from forming
+// if barwidth = 2.2, it could range from 7.9 to 10.1 (containing 8/9/10) and then from 10.1 to 12.3 (containing 11/12)
+// to solve this, border zones must be split between the categories they're going into
+// I will also lose resolution vertically when it is printed with ASCII, but can't do anything about that
+void run_stats::print_histogram(int numrows) {
+	// 1: find the borders between bars
+	int s = game_loss_histogram.size() - 1; // s=89
+	if (numrows > s) { numrows = s; }
+	float barwidth = float(s) / float(numrows);
+	// bars borders are compared against the halfpoints to interpolate; therefore endpoints must be 0.5 and 89.5
+	std::vector<float> border = std::vector<float>(numrows, 0); // contains the right endpoint for the range of each bar
+	float b = 0.5;
+	for (int i = 0; i < numrows - 1; i++) { b += barwidth; border[i] = b; }
+	border[numrows - 1] = float(s) + 0.6; // too big so it will never be determined 'less than' the end
+	// 'borders' now holds all right-end borderpoints; ends are known to be 0.5 and s+0.5
+
+
+	// 2: make a new histogram and put the old histogram's contents into it
+	std::vector<float> new_histogram = std::vector<float>(numrows, 0);
+	int q = 0; // index of borders to be comparing against, and new_histogram bucket to put numbers into
+	for (int i = 1; i < game_loss_histogram.size(); i++) {
+		// is this entry in the middle of a bar, or does it need split?
+		if (border[q] < (float(i) + 0.5)) {
+			// i needs splitting; part goes into q, part goes into q+1
+			float z = border[q] - (float(i) - 0.5); // z is [0-1]
+			new_histogram[q]   += float(game_loss_histogram[i]) * z;
+			new_histogram[q+1] += float(game_loss_histogram[i]) * (1. - z);
+			q++;
+		} else {
+			// normal case:
+			new_histogram[q] += float(game_loss_histogram[i]);
+		}
+	}
+	// new_histogram has now been filled
+
+
+	// 3: actually display it
+	// some sort of auto-scaling? is max height 100% or the highest of the histogram entries? WHAT SIZE is max height?
+	// do I want to print it horizontal or vertical? VERY different formatting strategy
+	// probably want to put the actual value next to the bar (rounded down)... easy for rows, hard for columns
+	// decided: max size is 40 * '#' horizontal, for the biggest of the values
+
+	// find max of the new histogram:
+	float z = 0;
+	for (int i = 0; i < new_histogram.size(); i++) {
+		if (new_histogram[i] > z) z = new_histogram[i];
+	}
+
+	// HORIZONTAL DISPLAY:
+	//myprintfn(2, "Total number of in-progress losses: %i\n", games_lost - game_loss_histogram[0]);
+	myprintfn(2, "Distribution of when losses occur (in terms of game completion):\n");
+	myprintfn(2, "num games| 1%% of flags placed\n");
+	// for-loop
+	for (int i = 0; i < new_histogram.size(); i++) {
+		std::string row = std::string(int(float(HISTOGRAM_MAX_HORIZ_SIZE) * new_histogram[i] / z), '#');
+		myprintfn(2, "%7.0f  |%s\n", new_histogram[i], row.c_str());
+	}
+	myprintfn(2, "         | 99%% of flags placed\n\n");
+}
+
+
+
+
+
 
 

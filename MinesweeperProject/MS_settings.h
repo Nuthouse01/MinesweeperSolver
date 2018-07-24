@@ -20,24 +20,28 @@ X/Y/mines
 
 // #defines
 // sets the "default values" for each setting
-#define NUM_GAMES_def				100
+#define NUM_GAMES_def				1000000
 #define SIZEX_def					30
 #define SIZEY_def					16
-#define NUM_MINES_def				90
+#define NUM_MINES_def				95
 #define	FIND_EARLY_ZEROS_def		false
 #define RANDOM_USE_SMART_def		true
-#define VERSION_STRING_def			"v4.9"
+#define VERSION_STRING_def			"v4.10"
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
-#define SCREEN_def					0
+// -1: logfile is empty except for run-end results
+#define SCREEN_def					-1
 #define ACTUAL_DEBUG				0
 // if SPECIFY_SEED_var = 0, will generate a new seed from current time
 #define SPECIFY_SEED_def			0
 
 
+#define HISTOGRAM_RESOLUTION		15
+#define HISTOGRAM_MAX_HORIZ_SIZE	40
+
 // after X loops, see if single-cell logic can take over... if not, will resume multicell
 // surprisingly multicell logic seems to consume even more time than the recursive smartguess when this value is high
-#define MULTICELL_LOOP_CUTOFF		3
+#define MULTICELL_LOOP_CUTOFF		6
 // in recursive function, after recursing X layers down, check to see if the chain is fragmented (almost certainly is)
 // this will have no impact on the accuracy of the result, and testing has shown that over many games it has almost no impact on efficiency
 // NOTE: this must be >= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN

@@ -1,32 +1,11 @@
-// base minesweeper game essentials: probably shouldn't be modified by anyone implementing their own solver
+// base minesweeper game essentials: shouldn't be modified by anyone implementing their own solver
 // Brian Henson 7/3/2018
-
-
-// TODO: selectively remove these includes to whittle down what is actually needed/used in 'basegame'
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <string>
-#include <cstring>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <list>
-#include <cassert> // so it aborts when something wierd happens
-#include <time.h>
-
-
-#include <chrono> // just because time(0) only has 1-second resolution
-#include <cstdarg> // for variable-arg function-macro
-#include <algorithm> // for pod-based intelligent recursion
-#include <random> // because I don't like using sequential seeds, or waiting when going very fast
-
 
 
 
 
 #include "MS_basegame.h" // include myself
+
 
 
 // basic constructor
@@ -39,17 +18,6 @@ runinfo::runinfo() {
 	SCREEN_var = 0;
 	FILE * logfile = NULL;
 }
-
-
-
-void myprintfn(int p, const char* fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
-	if (p >= 1) { vfprintf(myruninfo.logfile, fmt, args); }
-	if (p >= 2) { vprintf(fmt, args); }
-	va_end(args);
-}
-
 
 
 // constructor: with no args, don't do much
@@ -182,9 +150,7 @@ int game::reveal(class cell * revealme) {
 }
 
 // flag: sets as flagged, reduces # remaining mines, reduce "effective" values of everything visible around it
-// if remaining_mines = 0, validate the win; if it passes, return 1 for win! if it fails, something went wrong!
-// if remaining_mines != 0, return 0 and continue solving
-// if not an actual mine, dump a bunch of info and abort
+// return 1=win, 0=continue. if not an actual mine, dump error messages and try to abort
 int game::set_flag(class cell * flagme) {
 	if (flagme->status != UNKNOWN) {
 		return 0;
@@ -242,8 +208,19 @@ int game::set_flag(class cell * flagme) {
 // can plausibly return an empty vector
 // this version takes a cell pointer
 std::vector<class cell *> game::filter_adjacent(class cell * me, cell_state target) {
-	std::vector<class cell *> adj = get_adjacent(me);
-	return filter_adjacent(adj, target);
+	std::vector<class cell *> filt_list;
+	filt_list.reserve(8); // resize it once since this will be at most 8
+	int x = me->x; int y = me->y;
+	class cell * z;
+	for (int b = -1; b < 2; b++) {
+		for (int a = -1; a < 2; a++) {
+			if (a == 0 && b == 0) { continue; } // i am not adjacent to myself
+			z = cellptr(x + a, y + b);
+			if ((z != NULL) && (z->get_status() == target)) // check for null and check cell state
+				filt_list.push_back(z);
+		}
+	}
+	return filt_list;
 }
 
 
@@ -378,6 +355,17 @@ int game::reset_for_game() {
 	return eights;
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// basically printf that goes to both terminal and logfile, depending on the value of p
+// 0=none, 1=log, 2=both
+void myprintfn(int p, const char* fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	if (p >= 1) { vfprintf(myruninfo.logfile, fmt, args); }
+	if (p >= 2) { vprintf(fmt, args); }
+	va_end(args);
+}
 
 
 

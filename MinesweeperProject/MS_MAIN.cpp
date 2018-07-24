@@ -1,12 +1,15 @@
 /* 
 MinesweeperProject.cpp
-Brian Henson, 7/1/2018, v4.9
+Brian Henson, I forget when I started but it was like April or something
 This whole program (and all solver logic within it) was developed all on my own, without looking up anything
 online. I'm sure someone else has done their PHD thesis on creating the 'perfect minesweeper solver' but I
 didn't look at any of their work, I developed these strategies all on my own.
 
 Contents: 
-MinesweeperProject.cpp, verhist.txt, Minesweeper_README.txt
+verhist.txt, readme.txt, MS_MAIN.cpp, MS_settings.h
+MS_basegame.cpp, MS_basegame.h
+MS_stats.cpp, MS_stats.h
+MS_solver.cpp, MS_solver.h
 */
 
 // NOTE: v4.4, moved version history to verhist.txt because VisualStudio is surprisingly awful at scanning long block-comments
@@ -39,7 +42,6 @@ MinesweeperProject.cpp, verhist.txt, Minesweeper_README.txt
 // very minor or no benefits
 // TODO: change the logfile print method to instead use >> so if it unexpectedly dies I still have a partial logfile, and/or can read it
 //		while the code is running? very anoying how 'release' mode optimizes away the fflush command
-// TODO: split code between multiple files
 // TODO: determine histogram of recursion depth overall, and related to # of pods or # of mines remaining
 // TODO: use Matlab or something to run the program many many many many times, with different field parameters, and correlate winrate
 //		with field size or mine density or something. BUILD GRAPHS!
@@ -54,53 +56,34 @@ MinesweeperProject.cpp, verhist.txt, Minesweeper_README.txt
 // in a row.
 
 
-
-// from targetver.h:
-#include <SDKDDKVer.h> // not sure what this is but Visual Studio wants me to have it
- 
-#include <Windows.h> // needed to test for and create LOGS directory
-// TODO: this adds the actual max() and min() macros, maybe scan the code and see if I can put them in somewhere
-// TODO: see which of these I can remove?
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <string>
-#include <cstring>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <list>
-#include <cassert> // so it aborts when something wierd happens
-#include <time.h>
-
-
-
-
-#include <chrono> // just because time(0) only has 1-second resolution
-#include <cstdarg> // for variable-arg function-macro
-#include <algorithm> // for pod-based intelligent recursion
-#include <random> // because I don't like using sequential seeds, or waiting when going very fast
-
-
+// not sure what this is but Visual Studio wants me to have it
+#include <SDKDDKVer.h> 
 #define _USE_MATH_DEFINES
 #include <math.h>
 
 
+#include <cstdlib> // rand, other stuff
+#include <cstdio> // printf, file pointer (probably)
+#include <iostream> // cin and getline for input parsing
+#include <string> // parsing, logfile
+#include <vector> // used for handling lists of cells in play_game
+#include <cassert> // so it aborts when something wierd happens
+#include <ctime> // logfile timestamp
+#include <chrono> // used to seed the RNG because time(0) only has 1-second resolution
+#include <random> // because I don't like using sequential seeds, or waiting when going very fast
+#include <Windows.h> // needed to test for and create LOGS directory
+// TODO: Windows.h adds the actual max() and min() macros, maybe scan the code and see if I can put them in somewhere
 
 
-
-
-
-#include "MS_basegame.h"
-#include "MS_solver.h"
 #include "MS_settings.h"
+#include "MS_basegame.h"
 #include "MS_stats.h"
+#include "MS_solver.h"
+
+
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
 
 
 
@@ -108,17 +91,15 @@ MinesweeperProject.cpp, verhist.txt, Minesweeper_README.txt
 // these might like to go in the myruninfo struct, but they're intrinsic to the solver, not the game, so I left them isolated
 bool FIND_EARLY_ZEROS_var = false; // may want to eliminate this option so i can hide zerolist and get perfect privacy enforcement???
 bool RANDOM_USE_SMART_var = false;
-bool recursion_safety_valve = false; // if recursion goes down a rabbithole, start taking shortcuts
 
-class game mygame = game(); // holds all the base stuff
-class runinfo myruninfo = runinfo();
-struct run_stats myrunstats = run_stats(); // stat-tracking variables
+class game mygame = game();					// init empty, will fill the field_blank later
+class runinfo myruninfo = runinfo();		// init emtpy, will fill during input parsing
+struct run_stats myrunstats = run_stats();	// init empty, will set up histogram later
 struct game_stats mygamestats; // don't explicitly init here, its reset on each loop
 
 
 
 // major structural functions (just for encapsulation, each is only called once)
-
 inline int parse_input_args(int margc, char *margv[]);
 inline int play_game();
 
@@ -129,7 +110,7 @@ inline int play_game();
 // takes argc and argv, processes input args, runs interactive prompt if appropriate
 // return 0 on success, 1 if something makes me want to abort
 // values are stored into global variables that replace the #define statements
-// WARNING: the idiot-proofing is very weak here; guaranteed not to crash, but won't complain if entering non-numeric values
+// WARNING: the idiot-proofing is very weak here; guaranteed not to crash, but will interpret non-numberic values as 0s
 inline int parse_input_args(int argc, char *argv[]) {
 
 // helptext:
@@ -195,13 +176,14 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 		printf_s("Field type, format X-Y-mines: [%i-%i-%i]  ", myruninfo.SIZEX_var, myruninfo.SIZEY_var, myruninfo.NUM_MINES_var);
 		std::getline(std::cin, bufstr);
 		if (bufstr.size() != 0) {
-			int f = 0;
-			std::vector<int> indices;
+			int f = 0; // the index currently examined
+			int s = 0; // the place to store the next index
+			int indices[5];
 			while (f < bufstr.size()) {
-				if (bufstr[f] == '-') { indices.push_back(f); }
+				if (bufstr[f] == '-') { indices[s] = f; s++; }
 				f++;
 			}
-			if (indices.size() != 2) {
+			if (s != 2) {
 				printf_s("ERR: gamestring must have format '#-#-#', '%s' is unacceptable\n", bufstr.c_str()); return 1;
 			}
 
@@ -364,10 +346,10 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 
 // play one game with the field and zerolist as they currently are
 // this way it's easier to lose from anywhere, without breaking out of loops
-// return 1 = win, return 0 = loss
+// return 1 = win, return 0 = loss, return -1 = unexpected loss
 inline int play_game() {
 	int r; // holds return value of any 'reveal' calls
-	int numguesses = 0; // how many consecutive guesses
+	int consecutiveguesses = 0; // how many consecutive guesses
 	char buffer[8];
 
 	 // reveal one cell (chosen at random or guaranteed to succeed)
@@ -390,7 +372,7 @@ inline int play_game() {
 		mygamestats.trans_map = "z ";
 	}
 	// add first entry to transition map
-	mygamestats.print_gamestats(myruninfo.SCREEN_var);
+	mygamestats.print_gamestats(myruninfo.SCREEN_var, &mygame, &myruninfo);
 
 	
 
@@ -415,159 +397,157 @@ inline int play_game() {
 			}
 		}
 
-		////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		// begin single-cell logic loop
 		while(1) {
 			action = 0;
 			for (int y = 0; y < myruninfo.SIZEY_var; y++) { for (int x = 0; x < myruninfo.SIZEX_var; x++) { // iterate over each cell
 				class cell * me = &mygame.field[x][y];
-				if (me->get_status() != VISIBLE)
-					continue; // skip
+				if (me->get_status() != VISIBLE) { continue; } // SKIP
 
 				// don't need to calculate 'effective' because it is handled every time a flag is placed
 				// therefore effective values are already correct
-
-				std::vector<class cell *> unk = mygame.filter_adjacent(me, UNKNOWN);
-				// strategy 1: if an X-adjacency cell is next to X unknowns, flag them all
-				if ((me->get_effective() != 0) && (me->get_effective() == unk.size())) {
-					// flag all unknown squares
-					for (int i = 0; i < unk.size(); i++) {
-						action += 1; // inc by # of cells flagged
-						r = mygame.set_flag(unk[i]);
-						if (r == 1) {
-							// validated win! time to return!
-							// add entry to transition map, use 'numactions'
-							sprintf_s(buffer, "s%i ", (numactions + action));
-							mygamestats.trans_map += buffer;
-							return 1;
-						}
-					}
-					unk = mygame.filter_adjacent(unk, UNKNOWN); // must update the unknown list
-				}
-				
-				// strategy 2: if an X-adjacency cell is next to X flags, all remaining unknowns are NOT flags and can be revealed
-				if (me->get_effective() == 0) {
-					// reveal all adjacent unknown squares
-					for (int i = 0; i < unk.size(); i++) {
-						r = mygame.reveal(unk[i]);
-						if (r == -1) {
-							myprintfn(2, "ERR: Unexpected loss during SC satisfied-reveal, must investigate!!\n");
-							return -1;
-						}
-						action += r; // inc by # of cells revealed
-					}
-					me->set_status_satisfied();
-					continue;
-				}
-
-				// additional single-cell logic? i think that's pretty much it...
+				r = strat_singlecell(me, &action);
+				if (r == 1) {
+					// if game is won, handle trans_map and return!
+					sprintf_s(buffer, "s%i ", (numactions + action));
+					mygamestats.trans_map += buffer;
+					return 1;
+				} else if (r == -1) { return -1; }// unexpected game loss, should be impossible!
 
 			}}
 
-			if (action != 0) {	// if something happened, then increment and loop again
+			if (action != 0) {	// if something happened, then accumulate and don't break
 				numactions += action;
 				mygamestats.began_solving = true;
-			} else {			// if nothing changed, then exit the loop and move on
+			} else {			// if nothing changed, then break the loop
 				break;
 			}
-
-		} // end single-cell logic loop
+		} 
+		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// end single-cell logic loop
 
 		//sprintf_s(buffer, "s%i ", numactions);
 		//mygamestats.trans_map += buffer;
 		//mygamestats.print_gamestats(SCREEN_var); // post-multicell print
 		if (numactions != 0) {
-			numguesses = 0;
-			// add entry to transition map, use 'numactions'
-			sprintf_s(buffer, "s%i ", numactions);
+			consecutiveguesses = 0;
+			sprintf_s(buffer, "s%i ", numactions); // add entry to transition map
 			mygamestats.trans_map += buffer;
-			mygamestats.print_gamestats(myruninfo.SCREEN_var); // post-singlecell print
+			mygamestats.print_gamestats(myruninfo.SCREEN_var, &mygame, &myruninfo); // post-singlecell print
 		}
 
-		////////////////////////////////////////////
-		// begin multi-cell logic (run through once? multiple times? haven't decided)
-		// (currently loops until done, or 10 loops)
+		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// begin multi-cell logic (loops 6 times at most before returning to singlecell, configurable)
 		numactions = 0;
+		//std::list<class cell *> clearlist; std::list<class cell *> flaglist;
 		int numloops = 0;
 		while (1) {
 			action = 0; 
+			//clearlist.clear(); flaglist.clear();
 			for (int y = 0; y < myruninfo.SIZEY_var; y++) { for (int x = 0; x < myruninfo.SIZEX_var; x++) {// iterate over each cell
 				class cell * me = &mygame.field[x][y];
-				if ((me->get_status() != VISIBLE) || (me->get_effective() == 0))
-					continue;
-
+				if ((me->get_status() != VISIBLE) || (me->get_effective() == 0)) { continue; } // SKIP
+				
 				// strategy 3: 121-cross
-				r = strat_121_cross(me);
-				if (r == 0) {// nothing happened!
-					// skip
-				} else if (r > 0) {// some cells were revealed!
-					mygamestats.strat_121++;
-					action += r; // inc by # of cells revealed
-				} else if (r == -1) {// unexpected game loss, should be impossible!
-					myprintfn(2, "ERR: Unexpected loss during MC 121-cross, must investigate!!\n");
-					return -1;
-				}
+				r = strat_121_cross_IP(me, &mygamestats, &action);
+				if (r == -1) { return -1; } // unexpected game loss, should be impossible!
 
 				// strategy 4: nonoverlap-flag
-				r = strat_nonoverlap_flag(me);
-				if (r == 0) {// nothing happened!
-					// skip
-				} else if (r > 0) {// some cells were flagged!
-					mygamestats.strat_nov_flag++;
-					action += r; // inc by # of cells flagged
-				} else if (r == -1) {// game won!
-					mygamestats.strat_nov_flag++;
-					sprintf_s(buffer, "m%i ", (numactions + action + 1));
+				r = strat_nonoverlap_flag_IP(me, &mygamestats, &action);
+				if (r == 1) {// game won!
+					sprintf_s(buffer, "m%i ", (numactions + action));
 					mygamestats.trans_map += buffer;
 					return 1;
 				}
 
 				// strategy 5: nonoverlap-safe
-				r = strat_nonoverlap_safe(me);
-				if (r == 0) {// nothing happened!
-					// skip
-				} else if (r > 0) {// some cells were revealed!
-					mygamestats.strat_nov_safe++;
-					action += r; // inc by # of cells flagged
-				} else if (r == -1) {// unexpected game loss, should be impossible?
-					myprintfn(2, "ERR: Unexpected loss during MC nonoverlap-safe, must investigate!!\n");
-					return -1;
-				}
-
-
+				r = strat_nonoverlap_safe_IP(me, &mygamestats, &action);
+				if (r == -1) { return -1; } // unexpected game loss, should be impossible!
+				
+				
+				/* // QUEUEING 
+				r = strat_121_cross_Q(me, &mygamestats, &clearlist);
+				r = strat_nonoverlap_flag_Q(me, &mygamestats, &flaglist);
+				r = strat_nonoverlap_safe_Q(me, &mygamestats, &clearlist);
+				*/
 			}}
+			
+			/* // QUEUEING
+			for (std::list<class cell *>::iterator cit = clearlist.begin(); cit != clearlist.end(); cit++) {
+				r = mygame.reveal(*cit);
+				if (r == -1) { return -1; } // unexpected game loss, should be impossible!
+				action += r;
+			}
+			for (std::list<class cell *>::iterator fit = flaglist.begin(); fit != flaglist.end(); fit++) {
+				r = mygame.set_flag(*fit);
+				if (r == 1) {// game won!
+					sprintf_s(buffer, "m%i ", (numactions + action));
+					mygamestats.trans_map += buffer;
+					return 1;
+				}
+				action++;
+			}*/
+			
 			if (action != 0) {
 				numactions += action;
 				mygamestats.began_solving = true;
 				numloops++;
-				if (numloops > MULTICELL_LOOP_CUTOFF) { break; }
+				if (numloops >= MULTICELL_LOOP_CUTOFF) { break; }
 			} else {
 				break;
 			}
 
-		}// end multi-cell logic loop
+		}
+		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// end multi-cell logic loop
+
 		//sprintf_s(buffer, "m%i ", numactions);
 		//mygamestats.trans_map += buffer;
 		//mygamestats.print_gamestats(SCREEN_var); // post-multicell print
-
 		if (numactions != 0) {
-			numguesses = 0;
-			// add entry to transition map, use 'numactions'
-			sprintf_s(buffer, "m%i ", numactions);
+			// if something changed, don't do guessing, instead go back to singlecell
+			consecutiveguesses = 0;
+			sprintf_s(buffer, "m%i ", numactions);// add entry to transition map, use 'numactions'
 			mygamestats.trans_map += buffer;
-			mygamestats.print_gamestats(myruninfo.SCREEN_var); // post-multicell print
+			mygamestats.print_gamestats(myruninfo.SCREEN_var, &mygame, &myruninfo); // post-multicell print
 
-			// don't do hunting, instead go back to singlecell
 		} else {
 			// nothing changed during multi-cell, so reveal a new cell
 
-			// begin GUESSING phase
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			// begin GUESSING phase
 
 			int winorlose = 10; // 10=continue, -1=unexpected loss, 0=normal loss, 1=win
-			int method = 1; // 0=optimization, 1=guess, 2=solve
-			int rxsize = 0;
-			char tempchar;
+			char trans_map_char = '0';
+			int trans_map_val = 0;
+			bool isaguess = false;
+
+			/* new guessing phase structure:
+			if zeroguess
+				do it
+				isaguess=true, set trans_map_char
+			else if random guess
+				do it
+				isaguess=true, set trans_map_char
+			else if smart guess
+				chain build/optimize
+				if something was flagged/cleared,
+					trans_map_val = action#, set trans_map_char, consecutiveguesses=0
+				else if nothing was flagged/cleared,
+					smartguess
+					if just a guess,
+						isaguess=true, set trans_map_char
+					else if chain answer mode,
+						trans_map_val = action#, set trans_map_char, consecutiveguesses=0
+			if isaguess
+				inc guesses, set trans_map_val = guesses
+				trans_map erase prev
+			trans_map add entry with trans_map_char and trans_map_val
+			process delayed win-or-lose
+			*/
+
+
 
 			// actually guess, one of 3 paths...
 			// To win when guessing, if every guess is successful, it will reveal information that the SC/MC
@@ -579,58 +559,66 @@ inline int play_game() {
 					myprintfn(2, "ERR: Unexpected loss during hunting zerolist reveal, must investigate!!\n");
 					winorlose = -1;
 				}
-				tempchar = 'z';
+				trans_map_char = 'z'; isaguess = true;
 			} else if(!RANDOM_USE_SMART_var) {
 				// option B: random-guess
 				r = mygame.reveal(rand_from_list(&mygame.unklist));
 				if (r == -1) {
-					winorlose = 0;
+					winorlose = 0; // normal loss
 				}
-				tempchar = 'r';
+				trans_map_char = 'r'; isaguess = true;
 			} else {
 				// option C: smart-guess
 				// note: with random-guessing, old smartguess, it will only return 1 cell to clear
 				// with NEW smartguess, it will usually return 1 cell to clear, but it may return several to clear or several to flag
-				struct smartguess_return rx = smartguess();
-				method = rx.method;
-				rxsize = rx.size();
-				for (int i = 0; i < rx.flagme.size(); i++) { // flag-list (uncommon but possible)
-					r = mygame.set_flag(rx.flagme[i]);
-					if (r == 1) {
-						// fall thru, re-use the stat tracking code and return there
-						winorlose = 1; break;
-					}
-				}
-				for (int i = 0; i < rx.clearme.size(); i++) { // clear-list
-					r = mygame.reveal(rx.clearme[i]);
-					if (r == -1) {
-						winorlose = 0; break;
-					}
-				}
-				tempchar = '^';
-			} 
 
-			// add to stats and transition map
-			int temp = 0;
-			if (method == 1) {
-				mygamestats.times_guessing++; numguesses++; temp = numguesses; // guessing
-				if (numguesses >= 2) { // if this is the second+ hunt in a string of hunts, need to remove previous trans_map entry
+				struct chain fullchain = chain();
+				r = strat_chain_builder_optimizer(&fullchain, &trans_map_val);
+				if (r != 0) { return r; }	// if win, return; if lose, return as unexpeced loss
+				if (trans_map_val != 0) {	// if something was flagged/cleared, 
+					consecutiveguesses = 0; trans_map_char = 'O';
+				} else {					// if nothing was flagged/cleared, continue with smartguess
+					struct smartguess_return rx = smartguess(&fullchain, &mygamestats);
+
+					// TODO: make it clear the cells internally!!! eliminate the 'return the cells' convention!!
+					for (int i = 0; i < rx.flagme.size(); i++) { // flag-list (uncommon but possible)
+						r = mygame.set_flag(rx.flagme[i]);
+						if (r == 1) {
+							// fall thru, re-use the stat tracking code and return there
+							winorlose = 1; break;
+						}
+					}
+					for (int i = 0; i < rx.clearme.size(); i++) { // clear-list
+						r = mygame.reveal(rx.clearme[i]);
+						if (r == -1) {
+							winorlose = 0; break;
+						}
+					}
+					
+					if (rx.method == 1) { // if it was a guess,
+						isaguess = true; trans_map_char = '^';
+					} else if (rx.method == 2) { // if it was the chain-solver mode,
+						consecutiveguesses = 0; trans_map_char = 'A'; trans_map_val = rx.size();
+					}
+				}				
+			}
+
+			// handle stats and trans_map in a modular way, so this block handles any of the branches it may take above
+			if (isaguess) {
+				mygamestats.num_guesses++; consecutiveguesses++; trans_map_val = consecutiveguesses; // guessing
+				if (consecutiveguesses >= 2) { // if this is the second+ hunt in a string of hunts, need to remove previous trans_map entry
 					// method: (numhunts-1) to string, get length, delete that + 2 trailing chars from trans_map
-					int m = (std::to_string(numguesses - 1)).size() + 2; // almost always going to be 3 or 4
+					int m = (std::to_string(consecutiveguesses - 1)).size() + 2; // almost always going to be 3 or 4
 					mygamestats.trans_map.erase(mygamestats.trans_map.size() - m, m);
 				}
-			} else {
-				// this must be done after the smartguess
-				numguesses = 0; temp = rxsize;
-				if (method == 0) { tempchar = 'O';} // optimization stage
-				else { tempchar = 'A';} // advanced solver
 			}
-			sprintf_s(buffer, "%c%i ", tempchar, temp);
+			sprintf_s(buffer, "%c%i ", trans_map_char, trans_map_val);
 			mygamestats.trans_map += buffer;
 
+			// handle delayed winorlose return
 			if (winorlose != 10) return winorlose;
-
-			mygamestats.print_gamestats(myruninfo.SCREEN_var); // post-guess print
+			// post-guess print
+			mygamestats.print_gamestats(myruninfo.SCREEN_var, &mygame, &myruninfo); 
 		}
 
 	}
@@ -708,6 +696,7 @@ int main(int argc, char *argv[]) {
 
 	// init the 'game' object with the proper size
 	mygame = game(myruninfo.SIZEX_var, myruninfo.SIZEY_var);
+	myrunstats.init_histogram(myruninfo.NUM_MINES_var);
 
 
 	for (int game = 0; game < myruninfo.NUM_GAMES_var; game++) {
@@ -732,15 +721,21 @@ int main(int argc, char *argv[]) {
 		int r = play_game();
 
 
-		myrunstats.strat_121_total += mygamestats.strat_121;
-		myrunstats.strat_nov_flag_total += mygamestats.strat_nov_flag;
-		myrunstats.strat_nov_safe_total += mygamestats.strat_nov_safe;
-		myrunstats.num_guesses_total += mygamestats.times_guessing;
+		myrunstats.strat_121_total +=		mygamestats.strat_121;
+		myrunstats.strat_nov_flag_total +=	mygamestats.strat_nov_flag;
+		myrunstats.strat_nov_safe_total +=	mygamestats.strat_nov_safe;
+		myrunstats.num_guesses_total +=		mygamestats.num_guesses;
+		myrunstats.smartguess_attempts_total +=	mygamestats.smartguess_attempts;
+		myrunstats.smartguess_diff_total +=		mygamestats.smartguess_diff;
+		myrunstats.smartguess_valves_tripped_total += mygamestats.smartguess_valves_tripped;
+
 		// increment run results depending on gamestate and gameresult
 		myrunstats.games_total++;
 		if (r == 0) { // game loss
 			mygamestats.trans_map += "X";
 			myrunstats.games_lost++;
+			myrunstats.inc_histogram(myruninfo.NUM_MINES_var - mygame.get_mines_remaining());
+			// ... TODO
 			if (mygamestats.began_solving == false) {
 				myrunstats.games_lost_beginning++;
 			}
@@ -752,10 +747,11 @@ int main(int argc, char *argv[]) {
 			} else {
 				myrunstats.games_lost_lategame++; // 85-100% completed
 			}
+			// ...
 		} else if (r == 1) { // game win
 			mygamestats.trans_map += "W";
 			myrunstats.games_won++;
-			if (mygamestats.times_guessing > 0) {
+			if (mygamestats.num_guesses > 0) {
 				myrunstats.games_won_guessing++;
 			} else {
 				myrunstats.games_won_noguessing++;
@@ -765,13 +761,13 @@ int main(int argc, char *argv[]) {
 		}
 
 		// print/log single-game results (also to console if #debug)
-		mygamestats.print_gamestats(myruninfo.SCREEN_var + 1);
+		mygamestats.print_gamestats(myruninfo.SCREEN_var + 1, &mygame, &myruninfo);
 
 		//printf_s("Finished game %i of %i\n", (game+1), NUM_GAMES_var);
 	}
 
 	// done with games!
-	myrunstats.print_final_stats();
+	myrunstats.print_final_stats(&myruninfo);
 
 	fclose(myruninfo.logfile);
 	system("pause");

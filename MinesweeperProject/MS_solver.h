@@ -7,7 +7,12 @@
 
 
 
-// note: perhaps want to change 'cell' and 'runinfo' to be classes, just so everythign in 'basegame' is a class? that seems clean
+#include <cstdlib> // rand, other stuff
+#include <cstdio> // printf
+#include <vector> // used
+#include <list> // used
+#include <cassert> // so it aborts when something wierd happens (but its optimized away in 'release' mode)
+#include <algorithm> // for pod-based intelligent recursion
 
 
 
@@ -16,33 +21,6 @@ extern class runinfo myruninfo;
 extern class game mygame;
 extern bool FIND_EARLY_ZEROS_var;
 extern bool RANDOM_USE_SMART_var;
-extern bool recursion_safety_valve;
-extern struct run_stats myrunstats;
-
-
-
-
-
-
-
-
-
-// small but essential utility functions
-inline int compare_list_of_cells(std::list<class cell *> a, std::list<class cell *> b);
-bool sort_scenario_blind(std::list<struct link>::iterator a, std::list<struct link>::iterator b);
-inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
-bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
-bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
-
-std::vector<std::vector<class cell *>> find_nonoverlap(std::vector<class cell *> me_unk, std::vector<class cell *> other_unk);
-std::list<std::vector<int>> comb(int K, int N);
-inline int comb_int(int K, int N);
-inline int factorial(int x);
-class cell * rand_from_list(std::list<class cell *> * fromme);
-
-// functions for the recursive smartguess method(s)
-struct smartguess_return smartguess();
-struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain);
 
 
 
@@ -193,6 +171,7 @@ struct scenario {
 	int allocs; // how many possible allocations this scenario stands in for
 };
 
+// TODO
 // returned by smartguess function, pending restructuring of smartguess
 struct smartguess_return {
 	smartguess_return() {};
@@ -206,13 +185,46 @@ struct smartguess_return {
 
 
 
-// mult-cell strategies
-// TODO: change to return the cells for clear/flag instead of doing it here
-int strat_121_cross(class cell * center);
-int strat_nonoverlap_safe(class cell * center);
-int strat_nonoverlap_flag(class cell * center);
 
-// TODO: convert single-cell logic to a function that returns the clear/flag list
+
+
+
+
+// small but essential utility functions
+inline int compare_list_of_cells(std::list<class cell *> a, std::list<class cell *> b);
+bool sort_scenario_blind(std::list<struct link>::iterator a, std::list<struct link>::iterator b);
+inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+
+std::vector<std::vector<class cell *>> find_nonoverlap(std::vector<class cell *> me_unk, std::vector<class cell *> other_unk);
+std::list<std::vector<int>> comb(int K, int N);
+inline int comb_int(int K, int N);
+inline int factorial(int x);
+
+
+
+
+// functions for the recursive smartguess method(s)
+int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone);
+struct smartguess_return smartguess(struct chain * master_chain, struct game_stats * gstats);
+struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain);
+
+
+
+// single-cell logic
+int strat_singlecell(class cell * me, int * thingsdone);
+
+
+// multi-cell strategies
+int strat_121_cross_IP(class cell * center, struct game_stats * gstats, int * thingsdone);
+int strat_nonoverlap_flag_IP(class cell * center, struct game_stats * gstats, int * thingsdone);
+int strat_nonoverlap_safe_IP(class cell * center, struct game_stats * gstats, int * thingsdone);
+
+//int strat_121_cross_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * clearlist);
+//int strat_nonoverlap_flag_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * flaglist);
+//int strat_nonoverlap_safe_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * clearlist);
+
 
 
 
