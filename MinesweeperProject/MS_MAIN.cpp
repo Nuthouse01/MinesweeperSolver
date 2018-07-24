@@ -142,10 +142,10 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 
 
 	// apply the defaults
-	myruninfo.NUM_GAMES_var = NUM_GAMES_def;
-	myruninfo.SIZEX_var = SIZEX_def; myruninfo.SIZEY_var = SIZEY_def; myruninfo.NUM_MINES_var = NUM_MINES_def;
-	myruninfo.SPECIFY_SEED_var = SPECIFY_SEED_def;
-	myruninfo.SCREEN_var = SCREEN_def;
+	myruninfo.NUM_GAMES = NUM_GAMES_def;
+	myruninfo.SIZEX = SIZEX_def; myruninfo.SIZEY = SIZEY_def; myruninfo.NUM_MINES = NUM_MINES_def;
+	myruninfo.SPECIFY_SEED = SPECIFY_SEED_def;
+	myruninfo.SCREEN = SCREEN_def;
 	FIND_EARLY_ZEROS_var = FIND_EARLY_ZEROS_def;
 	RANDOM_USE_SMART_var = RANDOM_USE_SMART_def;
 
@@ -162,18 +162,18 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 	LABEL_PROMPT:
 		std::string bufstr;
 		printf_s("Please enter settings for running the program. Defaults values are in brackets.\n");
-		printf_s("Number of games: [%i]  ", myruninfo.NUM_GAMES_var);
+		printf_s("Number of games: [%i]  ", myruninfo.NUM_GAMES);
 		std::getline(std::cin, bufstr);
 		if (bufstr.size() != 0) {
 			// convert and apply
-			myruninfo.NUM_GAMES_var = atoi(bufstr.c_str());
+			myruninfo.NUM_GAMES = atoi(bufstr.c_str());
 			// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
-			if (myruninfo.SIZEY_var < 1) {
+			if (myruninfo.SIZEY < 1) {
 				printf_s("ERR: #games cannot be zero or negative\n"); return 1;
 			}
 		}
 
-		printf_s("Field type, format X-Y-mines: [%i-%i-%i]  ", myruninfo.SIZEX_var, myruninfo.SIZEY_var, myruninfo.NUM_MINES_var);
+		printf_s("Field type, format X-Y-mines: [%i-%i-%i]  ", myruninfo.SIZEX, myruninfo.SIZEY, myruninfo.NUM_MINES);
 		std::getline(std::cin, bufstr);
 		if (bufstr.size() != 0) {
 			int f = 0; // the index currently examined
@@ -190,17 +190,17 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			// read the values and convert them to ints, then store them
 			std::string temp;
 			temp = bufstr.substr(0, indices[0]);
-			myruninfo.SIZEX_var = atoi(temp.c_str());
+			myruninfo.SIZEX = atoi(temp.c_str());
 			temp = bufstr.substr(indices[0] + 1, indices[1] - (indices[0] + 1));
-			myruninfo.SIZEY_var = atoi(temp.c_str());
+			myruninfo.SIZEY = atoi(temp.c_str());
 			temp = bufstr.substr(indices[1] + 1); // from here to the end
-			myruninfo.NUM_MINES_var = atoi(temp.c_str());
+			myruninfo.NUM_MINES = atoi(temp.c_str());
 
 			// error checking
-			if (myruninfo.SIZEX_var < 1) {printf_s("ERR: sizeX cannot be zero or negative\n"); return 1;}
-			if (myruninfo.SIZEY_var < 1) {printf_s("ERR: sizeY cannot be zero or negative\n"); return 1;}
-			if (myruninfo.NUM_MINES_var > (myruninfo.SIZEX_var * myruninfo.SIZEY_var)) {printf_s("ERR: more mines than squares in the field!\n"); return 1;}
-			if (myruninfo.NUM_MINES_var < 1) {printf_s("ERR: #mines cannot be zero or negative\n"); return 1;}
+			if (myruninfo.SIZEX < 1) {printf_s("ERR: sizeX cannot be zero or negative\n"); return 1;}
+			if (myruninfo.SIZEY < 1) {printf_s("ERR: sizeY cannot be zero or negative\n"); return 1;}
+			if (myruninfo.NUM_MINES > (myruninfo.SIZEX * myruninfo.SIZEY)) {printf_s("ERR: more mines than squares in the field!\n"); return 1;}
+			if (myruninfo.NUM_MINES < 1) {printf_s("ERR: #mines cannot be zero or negative\n"); return 1;}
 		}
 
 
@@ -221,26 +221,26 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 		}
 
 		// NOTE: decided that specifying a seed is used so rarely, it doesn't need to be prompted; -seed only is enough
-		//printf_s("Specify seed to use, 0=random: [%i]  ", SPECIFY_SEED_var);
+		//printf_s("Specify seed to use, 0=random: [%i]  ", SPECIFY_SEED);
 		//std::getline(std::cin, bufstr);
 		//if (bufstr.size() != 0) {
 		//	// convert and apply
-		//	SPECIFY_SEED_var = atoi(bufstr.c_str());
+		//	SPECIFY_SEED = atoi(bufstr.c_str());
 		//	// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
-		//	//if (SPECIFY_SEED_var < 0) {
+		//	//if (SPECIFY_SEED < 0) {
 		//	//	printf_s("ERR: seed cannot be negative\n"); return 1;
 		//	//}
-		//	NUM_GAMES_var = 1;
+		//	NUM_GAMES = 1;
 		//}
 
-		printf_s("Set printout level, 0/1/2: [%i]  ", myruninfo.SCREEN_var);
+		printf_s("Set printout level, 0/1/2: [%i]  ", myruninfo.SCREEN);
 		std::getline(std::cin, bufstr);
 		if (bufstr.size() != 0) {
 			// convert and apply
-			myruninfo.SCREEN_var = atoi(bufstr.c_str());
+			myruninfo.SCREEN = atoi(bufstr.c_str());
 			// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
-			if (myruninfo.SCREEN_var > 2) { myruninfo.SCREEN_var = 2; }
-			if (myruninfo.SCREEN_var < 0) { myruninfo.SCREEN_var = 0; }
+			if (myruninfo.SCREEN > 2) { myruninfo.SCREEN = 2; }
+			if (myruninfo.SCREEN < 0) { myruninfo.SCREEN = 0; }
 		}
 		return 0;
 	}
@@ -261,10 +261,10 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 
 		} else if (!strncmp(argv[i], "-num", 4)) {
 			if (argv[i + 1] != NULL) {
-				myruninfo.NUM_GAMES_var = atoi(argv[i + 1]);
+				myruninfo.NUM_GAMES = atoi(argv[i + 1]);
 				// NOTE: if the argument at i+1 is not numeric, it simply returns 0 instead of complaining
-				if (myruninfo.SPECIFY_SEED_var != 0)
-					myruninfo.NUM_GAMES_var = 1;
+				if (myruninfo.SPECIFY_SEED != 0)
+					myruninfo.NUM_GAMES = 1;
 				i++; continue;
 			} else {
 				printf_s("ERR: arg '%s' must be followed by a value, or else omitted!\n", argv[i]); return 1;
@@ -283,17 +283,17 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 				// read the values and convert them to ints, then store them
 				char * context = NULL;
 				char * chunk = strtok_s(argv[i + 1], "-",&context);
-				myruninfo.SIZEX_var = atoi(chunk);
+				myruninfo.SIZEX = atoi(chunk);
 				chunk = strtok_s(NULL, "-",&context);
-				myruninfo.SIZEY_var = atoi(chunk);
+				myruninfo.SIZEY = atoi(chunk);
 				chunk = strtok_s(NULL, "-",&context);
-				myruninfo.NUM_MINES_var = atoi(chunk);
+				myruninfo.NUM_MINES = atoi(chunk);
 
 				// error checking
-				if (myruninfo.SIZEX_var < 1) { printf_s("ERR: sizeX cannot be zero or negative\n"); return 1; }
-				if (myruninfo.SIZEY_var < 1) { printf_s("ERR: sizeY cannot be zero or negative\n"); return 1; }
-				if (myruninfo.NUM_MINES_var >(myruninfo.SIZEX_var * myruninfo.SIZEY_var)) { printf_s("ERR: more mines than squares in the field!\n"); return 1; }
-				if (myruninfo.NUM_MINES_var < 1) { printf_s("ERR: #mines cannot be zero or negative\n"); return 1; }
+				if (myruninfo.SIZEX < 1) { printf_s("ERR: sizeX cannot be zero or negative\n"); return 1; }
+				if (myruninfo.SIZEY < 1) { printf_s("ERR: sizeY cannot be zero or negative\n"); return 1; }
+				if (myruninfo.NUM_MINES >(myruninfo.SIZEX * myruninfo.SIZEY)) { printf_s("ERR: more mines than squares in the field!\n"); return 1; }
+				if (myruninfo.NUM_MINES < 1) { printf_s("ERR: #mines cannot be zero or negative\n"); return 1; }
 
 				i++; continue;
 			} else {
@@ -317,19 +317,19 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			}
 		} else if (!strncmp(argv[i], "-seed", 5)) {
 			if (argv[i + 1] != NULL) {
-				myruninfo.SPECIFY_SEED_var = atoi(argv[i + 1]);
+				myruninfo.SPECIFY_SEED = atoi(argv[i + 1]);
 				// NOTE: if the argument at i+1 is not numeric, it simply returns 0 instead of complaining
-				myruninfo.NUM_GAMES_var = 1;
+				myruninfo.NUM_GAMES = 1;
 				i++; continue;
 			} else {
 				printf_s("ERR: arg '%s' must be followed by a value, or else omitted!\n", argv[i]); return 1;
 			}
 		} else if (!strncmp(argv[i], "-scr", 4)) {
 			if (argv[i + 1] != NULL) {
-				myruninfo.SCREEN_var = atoi(argv[i + 1]);
+				myruninfo.SCREEN = atoi(argv[i + 1]);
 				// NOTE: if the argument at i+1 is not numeric, it simply returns 0 instead of complaining
-				if (myruninfo.SCREEN_var > 2) { myruninfo.SCREEN_var = 2; }
-				if (myruninfo.SCREEN_var < 0) { myruninfo.SCREEN_var = 0; }
+				if (myruninfo.SCREEN > 2) { myruninfo.SCREEN = 2; }
+				if (myruninfo.SCREEN < 0) { myruninfo.SCREEN = 0; }
 				i++; continue;
 			} else {
 				printf_s("ERR: arg '%s' must be followed by a value, or else omitted!\n", argv[i]); return 1;
@@ -372,7 +372,7 @@ inline int play_game() {
 		mygamestats.trans_map = "z ";
 	}
 	// add first entry to transition map
-	mygamestats.print_gamestats(myruninfo.SCREEN_var, &mygame, &myruninfo);
+	mygamestats.print_gamestats(myruninfo.SCREEN, &mygame, &myruninfo);
 
 	
 
@@ -401,7 +401,7 @@ inline int play_game() {
 		// begin single-cell logic loop
 		while(1) {
 			action = 0;
-			for (int y = 0; y < myruninfo.SIZEY_var; y++) { for (int x = 0; x < myruninfo.SIZEX_var; x++) { // iterate over each cell
+			for (int y = 0; y < myruninfo.SIZEY; y++) { for (int x = 0; x < myruninfo.SIZEX; x++) { // iterate over each cell
 				class cell * me = &mygame.field[x][y];
 				if (me->get_status() != VISIBLE) { continue; } // SKIP
 
@@ -429,12 +429,12 @@ inline int play_game() {
 
 		//sprintf_s(buffer, "s%i ", numactions);
 		//mygamestats.trans_map += buffer;
-		//mygamestats.print_gamestats(SCREEN_var); // post-multicell print
+		//mygamestats.print_gamestats(SCREEN); // post-multicell print
 		if (numactions != 0) {
 			consecutiveguesses = 0;
 			sprintf_s(buffer, "s%i ", numactions); // add entry to transition map
 			mygamestats.trans_map += buffer;
-			mygamestats.print_gamestats(myruninfo.SCREEN_var, &mygame, &myruninfo); // post-singlecell print
+			mygamestats.print_gamestats(myruninfo.SCREEN, &mygame, &myruninfo); // post-singlecell print
 		}
 
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -445,7 +445,7 @@ inline int play_game() {
 		while (1) {
 			action = 0; 
 			//clearlist.clear(); flaglist.clear();
-			for (int y = 0; y < myruninfo.SIZEY_var; y++) { for (int x = 0; x < myruninfo.SIZEX_var; x++) {// iterate over each cell
+			for (int y = 0; y < myruninfo.SIZEY; y++) { for (int x = 0; x < myruninfo.SIZEX; x++) {// iterate over each cell
 				class cell * me = &mygame.field[x][y];
 				if ((me->get_status() != VISIBLE) || (me->get_effective() == 0)) { continue; } // SKIP
 				
@@ -504,13 +504,13 @@ inline int play_game() {
 
 		//sprintf_s(buffer, "m%i ", numactions);
 		//mygamestats.trans_map += buffer;
-		//mygamestats.print_gamestats(SCREEN_var); // post-multicell print
+		//mygamestats.print_gamestats(SCREEN); // post-multicell print
 		if (numactions != 0) {
 			// if something changed, don't do guessing, instead go back to singlecell
 			consecutiveguesses = 0;
 			sprintf_s(buffer, "m%i ", numactions);// add entry to transition map, use 'numactions'
 			mygamestats.trans_map += buffer;
-			mygamestats.print_gamestats(myruninfo.SCREEN_var, &mygame, &myruninfo); // post-multicell print
+			mygamestats.print_gamestats(myruninfo.SCREEN, &mygame, &myruninfo); // post-multicell print
 
 		} else {
 			// nothing changed during multi-cell, so reveal a new cell
@@ -618,7 +618,7 @@ inline int play_game() {
 			// handle delayed winorlose return
 			if (winorlose != 10) return winorlose;
 			// post-guess print
-			mygamestats.print_gamestats(myruninfo.SCREEN_var, &mygame, &myruninfo); 
+			mygamestats.print_gamestats(myruninfo.SCREEN, &mygame, &myruninfo); 
 		}
 
 	}
@@ -660,7 +660,7 @@ int main(int argc, char *argv[]) {
 	myprintfn(2, "Beginning MinesweeperSolver version %s\n", VERSION_STRING_def);
 
 	// logfile header info: mostly everything from the #defines
-	myprintfn(2, "Going to play %i games, with X/Y/mines = %i/%i/%i\n", myruninfo.NUM_GAMES_var, myruninfo.SIZEX_var, myruninfo.SIZEY_var, myruninfo.NUM_MINES_var);
+	myprintfn(2, "Going to play %i games, with X/Y/mines = %i/%i/%i\n", myruninfo.NUM_GAMES, myruninfo.SIZEX, myruninfo.SIZEY, myruninfo.NUM_MINES);
 	if (FIND_EARLY_ZEROS_var) {
 		myprintfn(2, "Using 'hunting' method = succeed early (uncover only zeroes until solving can begin)\n");
 	} else {
@@ -683,32 +683,32 @@ int main(int argc, char *argv[]) {
 
 
 	// seed random # generator
-	if (myruninfo.SPECIFY_SEED_var == 0) {
+	if (myruninfo.SPECIFY_SEED == 0) {
 		// create a new seed from time, log it, apply it
 		myprintfn(2, "Generating new seeds\n");
 	} else {
-		srand(myruninfo.SPECIFY_SEED_var);
-		myruninfo.NUM_GAMES_var = 1;
-		myprintfn(2, "Using seed %i for game 1\n", myruninfo.SPECIFY_SEED_var);
+		srand(myruninfo.SPECIFY_SEED);
+		myruninfo.NUM_GAMES = 1;
+		myprintfn(2, "Using seed %i for game 1\n", myruninfo.SPECIFY_SEED);
 	}
 	fflush(myruninfo.logfile);
 
 
 	// init the 'game' object with the proper size
-	mygame = game(myruninfo.SIZEX_var, myruninfo.SIZEY_var);
-	myrunstats.init_histogram(myruninfo.NUM_MINES_var);
+	mygame = game(myruninfo.SIZEX, myruninfo.SIZEY);
+	myrunstats.init_histogram(myruninfo.NUM_MINES);
 
 
-	for (int game = 0; game < myruninfo.NUM_GAMES_var; game++) {
+	for (int game = 0; game < myruninfo.NUM_GAMES; game++) {
 
 		// generate a new seed, log it, apply it... BUT only if not on the first game
-		if (myruninfo.SPECIFY_SEED_var == 0) {
+		if (myruninfo.SPECIFY_SEED == 0) {
 			int f = distribution(generator);
-			myprintfn(myruninfo.SCREEN_var + 1, "Using seed %i for game %i\n", f, game + 1);
+			myprintfn(myruninfo.SCREEN + 1, "Using seed %i for game %i\n", f, game + 1);
 			srand(f);
 		}
 		// status tracker for impatient people
-		printf_s("Beginning game %i of %i\n", (game + 1), myruninfo.NUM_GAMES_var);
+		printf_s("Beginning game %i of %i\n", (game + 1), myruninfo.NUM_GAMES);
 
 
 		// reset stat-tracking variables
@@ -734,12 +734,12 @@ int main(int argc, char *argv[]) {
 		if (r == 0) { // game loss
 			mygamestats.trans_map += "X";
 			myrunstats.games_lost++;
-			myrunstats.inc_histogram(myruninfo.NUM_MINES_var - mygame.get_mines_remaining());
+			myrunstats.inc_histogram(myruninfo.NUM_MINES - mygame.get_mines_remaining());
 			// ... TODO
 			if (mygamestats.began_solving == false) {
 				myrunstats.games_lost_beginning++;
 			}
-			float remaining = float(mygame.get_mines_remaining()) / float(myruninfo.NUM_MINES_var);
+			float remaining = float(mygame.get_mines_remaining()) / float(myruninfo.NUM_MINES);
 			if (remaining > 0.85) {
 				myrunstats.games_lost_earlygame++; // 0-15% completed
 			} else if (remaining > 0.15) {
@@ -761,9 +761,9 @@ int main(int argc, char *argv[]) {
 		}
 
 		// print/log single-game results (also to console if #debug)
-		mygamestats.print_gamestats(myruninfo.SCREEN_var + 1, &mygame, &myruninfo);
+		mygamestats.print_gamestats(myruninfo.SCREEN + 1, &mygame, &myruninfo);
 
-		//printf_s("Finished game %i of %i\n", (game+1), NUM_GAMES_var);
+		//printf_s("Finished game %i of %i\n", (game+1), NUM_GAMES);
 	}
 
 	// done with games!

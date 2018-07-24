@@ -73,7 +73,7 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 	sprintf_s(timestr, "%i:%02i:%06.3f", hr, min, sec);
 
 	// print/log overall results (always print to terminal and log)
-	myprintfn(2, "\n\nDone playing all %i games, displaying results! Time = %s\n\n", runinfoptr->NUM_GAMES_var, timestr);
+	myprintfn(2, "\n\nDone playing all %i games, displaying results! Time = %s\n\n", runinfoptr->NUM_GAMES, timestr);
 
 	//if ((games_lost - game_loss_histogram[0]) > 50) {
 		print_histogram(HISTOGRAM_RESOLUTION);
@@ -83,8 +83,8 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 
 
 	myprintfn(2, "MinesweeperSolver version %s\n", VERSION_STRING_def);
-	myprintfn(2, "Games used X/Y/mines = %i/%i/%i, mine density = %4.1f%%\n", runinfoptr->SIZEX_var, runinfoptr->SIZEY_var, runinfoptr->NUM_MINES_var,
-		float(100. * float(runinfoptr->NUM_MINES_var) / float(runinfoptr->SIZEX_var * runinfoptr->SIZEY_var)));
+	myprintfn(2, "Games used X/Y/mines = %i/%i/%i, mine density = %4.1f%%\n", runinfoptr->SIZEX, runinfoptr->SIZEY, runinfoptr->NUM_MINES,
+		float(100. * float(runinfoptr->NUM_MINES) / float(runinfoptr->SIZEX * runinfoptr->SIZEY)));
 	if (FIND_EARLY_ZEROS_var) {
 		myprintfn(2, "Using 'hunting' method = succeed early (uncover only zeroes until solving can begin)\n");
 	} else {
@@ -133,7 +133,7 @@ void game_stats::print_gamestats(int screen, class game * gameptr, class runinfo
 	myprintfn(screen, "121-cross hits: %i, nonoverlap-safe hits: %i, nonoverlap-flag hits: %i\n",
 		strat_121, strat_nov_safe, strat_nov_flag);
 	myprintfn(screen, "Cells guessed: %i\n", num_guesses);
-	myprintfn(screen, "Flags placed: %i / %i\n\n\n", runinfoptr->NUM_MINES_var - gameptr->get_mines_remaining(), runinfoptr->NUM_MINES_var);
+	myprintfn(screen, "Flags placed: %i / %i\n\n\n", runinfoptr->NUM_MINES - gameptr->get_mines_remaining(), runinfoptr->NUM_MINES);
 	// TODO: create and also print "luck value"
 	fflush(runinfoptr->logfile);
 }

@@ -10,12 +10,12 @@
 
 // basic constructor
 runinfo::runinfo() {
-	NUM_GAMES_var = 0;
-	SIZEX_var = 0;
-	SIZEY_var = 0;
-	NUM_MINES_var = 0;
-	SPECIFY_SEED_var = 0;
-	SCREEN_var = 0;
+	NUM_GAMES = 0;
+	SIZEX = 0;
+	SIZEY = 0;
+	NUM_MINES = 0;
+	SPECIFY_SEED = 0;
+	SCREEN = 0;
 	FILE * logfile = NULL;
 }
 
@@ -80,7 +80,7 @@ void cell::set_status_satisfied() {
 // cellptr: if the given X and Y are valid, returns a pointer to the cell; otherwise returns NULL
 // during single-cell and multi-cell iterations, just use &field[x][y] because the X and Y are guaranteed not off the edge
 inline class cell * game::cellptr(int x, int y) {
-	if ((x < 0) || (x >= myruninfo.SIZEX_var) || (y < 0) || (y >= myruninfo.SIZEY_var))
+	if ((x < 0) || (x >= myruninfo.SIZEX) || (y < 0) || (y >= myruninfo.SIZEY))
 		return NULL;
 	return &field[x][y];
 }
@@ -177,8 +177,8 @@ int game::set_flag(class cell * flagme) {
 	mines_remaining -= 1;
 	if (mines_remaining == 0) {
 		//try to validate the win: every mine is flagged, and every not-mine is not-flagged
-		for (int y = 0; y < myruninfo.SIZEY_var; y++) {
-			for (int x = 0; x < myruninfo.SIZEX_var; x++) { // iterate over each cell
+		for (int y = 0; y < myruninfo.SIZEY; y++) {
+			for (int x = 0; x < myruninfo.SIZEX; x++) { // iterate over each cell
 				class cell * v = &field[x][y];
 
 				if (v->value == MINE) {
@@ -255,12 +255,12 @@ void game::print_field(int mode, int screen) {
 	// build and print the field one row at a time
 
 	// top/bottom:
-	std::string top = std::string(((myruninfo.SIZEX_var + 2) * 2) - 1, '+') + "\n";
+	std::string top = std::string(((myruninfo.SIZEX + 2) * 2) - 1, '+') + "\n";
 	myprintfn(screen, top.c_str());
 
 	std::string line;
-	for (int y = 0; y < myruninfo.SIZEY_var; y++) {
-		for (int x = 0; x < myruninfo.SIZEX_var; x++) {
+	for (int y = 0; y < myruninfo.SIZEY; y++) {
+		for (int x = 0; x < myruninfo.SIZEX; x++) {
 			if ((field[x][y].status == UNKNOWN) && (mode != 1)) {
 				// if mode==full, fall through
 				line += "- "; continue;
@@ -301,16 +301,16 @@ void game::print_field(int mode, int screen) {
 // returns the number of 8-cells found when generating (just because I can)
 int game::reset_for_game() {
 	// reset the 'live' field
-	//memcpy(field, field_blank, SIZEX_var * SIZEY_var * sizeof(class cell)); // paste
+	//memcpy(field, field_blank, SIZEX * SIZEY * sizeof(class cell)); // paste
 	field = field_blank; // paste
 
 	zerolist.clear(); // reset the list
 	unklist.clear();
-	mines_remaining = myruninfo.NUM_MINES_var;
+	mines_remaining = myruninfo.NUM_MINES;
 
 	// generate the mines
-	for (int i = 0; i < myruninfo.NUM_MINES_var; i++) {
-		int x = rand() % myruninfo.SIZEX_var; int y = rand() % myruninfo.SIZEY_var;
+	for (int i = 0; i < myruninfo.NUM_MINES; i++) {
+		int x = rand() % myruninfo.SIZEX; int y = rand() % myruninfo.SIZEY;
 		if (field[x][y].value == MINE) {
 			i--; continue; // if already a mine, generate again
 		}
@@ -320,8 +320,8 @@ int game::reset_for_game() {
 
 	int eights = 0;
 	// set up adjacency values, also populate zero-list and unk-list
-	for (int y = 0; y < myruninfo.SIZEY_var; y++) {
-		for (int x = 0; x < myruninfo.SIZEX_var; x++) { // iterate over the field
+	for (int y = 0; y < myruninfo.SIZEY; y++) {
+		for (int x = 0; x < myruninfo.SIZEX; x++) { // iterate over the field
 			unklist.push_back(&field[x][y]); // everything starts out in the unklist
 
 			if (field[x][y].value == MINE)
@@ -345,8 +345,8 @@ int game::reset_for_game() {
 		}
 	}
 
-	// print the fully-revealed field to screen only if SCREEN_var==2
-	print_field(1, myruninfo.SCREEN_var);
+	// print the fully-revealed field to screen only if SCREEN==2
+	print_field(1, myruninfo.SCREEN);
 
 	zerolist.sort(sort_by_position);
 	unklist.sort(sort_by_position);
@@ -371,7 +371,7 @@ void myprintfn(int p, const char* fmt, ...) {
 
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
 inline int compare_two_cells(class cell * a, class cell * b) {
-	return ((b->y * myruninfo.SIZEX_var) + b->x) - ((a->y * myruninfo.SIZEX_var) + a->x);
+	return ((b->y * myruninfo.SIZEX) + b->x) - ((a->y * myruninfo.SIZEX) + a->x);
 }
 
 // if a goes before b, return true... needed for consistient sorting

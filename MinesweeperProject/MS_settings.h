@@ -15,12 +15,11 @@ X/Y/mines
 10/18/27 (phone easy)
 10/18/38 (phone medium)
 10/18/67 (phone IMPOSSIBLE)
-
 */
 
 // #defines
 // sets the "default values" for each setting
-#define NUM_GAMES_def				1000000
+#define NUM_GAMES_def				100
 #define SIZEX_def					30
 #define SIZEY_def					16
 #define NUM_MINES_def				95
@@ -31,10 +30,10 @@ X/Y/mines
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 // -1: logfile is empty except for run-end results
 #define SCREEN_def					-1
-#define ACTUAL_DEBUG				0
-// if SPECIFY_SEED_var = 0, will generate a new seed from current time
+// if SPECIFY_SEED = 0, will generate a new seed from current time
 #define SPECIFY_SEED_def			0
 
+#define ACTUAL_DEBUG				0
 
 #define HISTOGRAM_RESOLUTION		15
 #define HISTOGRAM_MAX_HORIZ_SIZE	40

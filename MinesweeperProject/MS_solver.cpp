@@ -403,8 +403,8 @@ void riskholder::addrisk(class cell * foo, float newrisk) {
 struct riskreturn riskholder::findminrisk() {
 	std::list<class cell *> minlist = std::list<class cell *>();
 	float minrisk = 100.;
-	for (int m = 0; m < myruninfo.SIZEX_var; m++) {
-		for (int n = 0; n < myruninfo.SIZEY_var; n++) {
+	for (int m = 0; m < myruninfo.SIZEX; m++) {
+		for (int n = 0; n < myruninfo.SIZEY; n++) {
 			float j = finalrisk(m, n);
 			if ((j == -1.) || (j > minrisk))
 				continue;
@@ -615,8 +615,8 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 	// step 1: iterate over field, get 'visible' cells, use them as roots to build pods.
 	// non-optimized: includes duplicates, before pod-subtraction. interior_unk not yet modified.
 	// pods are added to the chain already sorted (reading order by root), as are their cell_list contents
-	for (int y = 0; y < myruninfo.SIZEY_var; y++) {
-		for (int x = 0; x < myruninfo.SIZEX_var; x++) { // iterate over each cell
+	for (int y = 0; y < myruninfo.SIZEY; y++) {
+		for (int x = 0; x < myruninfo.SIZEX; x++) { // iterate over each cell
 			if (mygame.field[x][y].get_status() == VISIBLE) {
 				buildme->podlist.push_back(pod(&mygame.field[x][y])); // constructor gets adj unks for the given root
 			}
@@ -705,7 +705,7 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 
 	static struct riskholder myriskholder;
 	if (myriskholder.riskarray.empty()) { // because it's static, init it like this only once
-		myriskholder = riskholder(myruninfo.SIZEX_var, myruninfo.SIZEY_var);
+		myriskholder = riskholder(myruninfo.SIZEX, myruninfo.SIZEY);
 	}
 
 
@@ -892,8 +892,8 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 			// if it has broken into 2 or more distinct chains, seperate them to operate recursively on each! much faster than the whole
 			std::vector<struct chain> chain_list = mychain.sort_into_chains(r, false); // where i'll be sorting them into
 
-																					   // handle the multiple podwise_return objects, just sum their averages and total lengths
-																					   // NOTE: this same structure/method used at highest-level, when initially invoking the recursion
+			// handle the multiple podwise_return objects, just sum their averages and total lengths
+			// NOTE: this same structure/method used at highest-level, when initially invoking the recursion
 			float sum = 0;
 			int effort_sum = 0;
 			int alloc_product = 1;
@@ -1052,7 +1052,7 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 
 		retval += asdf; // append into the return list
 
-						// if the safety valve has been activated, only try RECURSION_SAFE_WIDTH valid scenarios each level at most
+		// if the safety valve has been activated, only try RECURSION_SAFE_WIDTH valid scenarios each level at most
 		if (recursion_safety_valve && (whichscenario >= RECURSION_SAFE_WIDTH)) {
 			break;
 		}

@@ -20,12 +20,12 @@
 class runinfo {
 public:
 	runinfo();
-	int NUM_GAMES_var;
-	int SIZEX_var;
-	int SIZEY_var;
-	int NUM_MINES_var;
-	int SPECIFY_SEED_var;
-	int SCREEN_var;
+	int NUM_GAMES;
+	int SIZEX;
+	int SIZEY;
+	int NUM_MINES;
+	int SPECIFY_SEED;
+	int SCREEN;
 	FILE * logfile;
 };
 extern class runinfo myruninfo;
