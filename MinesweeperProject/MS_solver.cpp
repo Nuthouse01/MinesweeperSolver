@@ -320,6 +320,22 @@ std::list<struct pod>::iterator chain::int_to_pod(int f) {
 	for (int i = 0; i < f; i++) { iter++; }
 	return iter;
 }
+
+// returns a VECTOR of POD-LIST ITERATORS to the pods in the podlist that are within 5x5 minus corners of the given pod
+std::vector<std::list<struct pod>::iterator> chain::get_5x5_around(std::list<struct pod>::iterator center) {
+	std::vector<std::list<struct pod>::iterator> retme;
+	for (int b = -2; b < 3; b++) { for (int a = -2; a < 3; a++) { // iterate over 5x5
+		if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
+		class cell * other = mygame.cellptr(center->root->x + a, center->root->y + b);
+		if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; } // if the cell doesn't exist or isn't VISIBLE, then skip
+		std::list<struct pod>::iterator otherpod = this->root_to_pod(other);// find the pod in the chain with this cell as root!
+		if (otherpod != this->podlist.end()) { // if 'other' has a corresponding pod, then add to the list
+			retme.push_back(otherpod); // need to de-iterator it, then turn it into an ordinary pointer
+		}
+	}}
+	return retme;
+}
+
 // after calling identify_chains, sort the pods into a vector of chains
 // if 'reduce' is true, then also turn "cell_list" into a simple number, and clear the actual list (only for before recursion!)
 std::vector<struct chain> chain::sort_into_chains(int r, bool reduce) {
@@ -506,23 +522,22 @@ bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a,
 
 
 // find_nonoverlap: takes two vectors of cells, returns (first_vect_unique) (second_vect_unique) (overlap)
+// TODO: rename this function? also possibly move to basegame
 std::vector<std::vector<class cell *>> find_nonoverlap(std::vector<class cell *> me_unk, std::vector<class cell *> other_unk) {
 	std::vector<class cell *> overlap = std::vector<class cell *>();
-	for (int i = 0; i != me_unk.size(); i++) { // for each cell in me_unk...
-		for (int j = 0; j != other_unk.size(); j++) { // ... compare against each cell in other_unk...
-			if (me_unk[i] == other_unk[j]) {// ... until there is a match!
+	for (int i = 0; i < me_unk.size(); i++) { // for each cell in me_unk...
+		for (int j = 0; j < other_unk.size(); j++) { // ...compare against each cell in other_unk...
+			if (me_unk[i] == other_unk[j]) {// ...until there is a match!
 				overlap.push_back(me_unk[i]);
 				me_unk.erase(me_unk.begin() + i);
 				other_unk.erase(other_unk.begin() + j); // not sure if this makes it more or less efficient...
 				i--; // need to counteract the i++ that happens in outer loop
-				break;
+				break; // cell at this position can only match once
 			}
 		}
 	}
 	std::vector<std::vector<class cell *>> retme;
-	retme.push_back(me_unk);
-	retme.push_back(other_unk);
-	retme.push_back(overlap);
+	retme.push_back(me_unk); retme.push_back(other_unk); retme.push_back(overlap);
 	return retme;
 }
 
@@ -608,6 +623,16 @@ inline int factorial(int x) {
 // TODO: consider rolling steps 4?/5/6 into this as well?
 // return: 1=win/-1=loss/0=continue (winning is rare but theoretically possible, but cannot lose unless something is seriously out of whack)
 int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
+	static class cell dummycell; // cell w/ value 0
+	static struct pod dummypod; // pod w/ cell_list empty
+	static std::list<struct pod> dummylist; // one-entry list for dummypod
+	static std::list<struct pod>::iterator dummyitr; // iterator to beginning of dummylist
+	if (dummylist.empty()) { // one-time init for these static things
+		dummypod.root = &dummycell; // can't use constructor cuz constructor automatically fills the cell_list
+		dummylist.resize(1, dummypod);
+		dummyitr = dummylist.begin(); // must have an iterator to the dummy, but it doesn't need to be in the same list as the others
+	}
+
 
 	std::list<class cell *> clearme;
 	std::list<class cell *> flagme;
@@ -626,46 +651,135 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 	// step 2: iterate over pods, check for dupes and subsets (call find_nonoverlap on each pod with root in 5x5 around my root)
 	// this is where the "advanced solving" comes into play
 	// note if a pod becomes 100% or 0%... repeat until no changes are done. when deleting pods, what remains will still be in sorted order
-	bool changes;
+
+	// NOV-FLAGx3:
+	// requires each smaller pod to have overlap of 2 or more & value less than overlap size
+	// *** each contributing smallpod needs to contribute more overlap than mines that could go in it
+
+	/*
+	for each pod,
+		get 5x5 around, otherpod (VECTOR of POD-LIST ITERATORS to the pods in podlist)
+		for each otherpod in around,
+			check if pod==otherpod (dupe)
+			check if pod<otherpod (subset)
+			for each secondpod in around (starting secondpod==otherpod)
+				if secondpod==otherpod, instead use 0,0 pod and disable NOV-SAFEx3 section
+				*** begin NOV-FLAGx3 and NOV-SAFEx3 logic ***
+	*/
+
+	bool changes = false;
+	bool erased_myself = false;
 	do {
 		changes = false;
-		for (std::list<struct pod>::iterator podit = buildme->podlist.begin(); podit != buildme->podlist.end(); podit++) {
-			for (int b = -2; b < 3; b++) { for (int a = -2; a < 3; a++) { // iterate over 5x5
-				if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
-				class cell * other = mygame.cellptr(podit->root->x + a, podit->root->y + b);
-				if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; } // if the cell exists and is visible...
-				std::list<struct pod>::iterator otherpod = buildme->root_to_pod(other);// ...then it must be a root, find its pod in the chain!
+		// implement my own post-loop increment instead of doing it in the for-loop header
+		for (std::list<struct pod>::iterator podit = buildme->podlist.begin(); podit != buildme->podlist.end(); ) {
+			std::vector<std::list<struct pod>::iterator> around = buildme->get_5x5_around(podit);
+			for (int b = 0; b < around.size(); b++) {
+				std::list<struct pod>::iterator otherpod = around[b]; // for each pod 'otherpod' with root within 5x5 found...
 
-				if (otherpod == buildme->podlist.end()) { continue; } // TODO: i'm not convinced this is good?
+				std::vector<std::vector<class cell *>> N = find_nonoverlap(podit->cell_list, otherpod->cell_list);
 
-				// for each pod 'otherpod' with root within 5x5 found...
-				std::vector<std::vector<class cell *>> n = find_nonoverlap(podit->cell_list, otherpod->cell_list);
-				if (n[0].empty()) {		// means podit <= otherpod
+				if (N[0].empty() && N[1].empty()) { // means podit == otherpod
+					// if total duplicate, delete OTHER (not me)
 					changes = true;
-					if (n[1].empty()) { // means podit == otherpod
-						// if total duplicate, delete OTHER (not me), OTHER is somewhere later in the list
-						buildme->podlist.erase(otherpod);
-					} else {			// means podit < otherpod
-						// if podit has no uniques but otherpod does, then podit is subset of otherpod... reduce otherpod to be only its uniques
-						otherpod->mines -= podit->mines;
-						otherpod->cell_list = n[1];
-						// if a pod would become 100 or 0, otherpod would do it here.
-						float z = otherpod->risk();
-						if (z == 0.) {
-							// add all cells in otherpod to resultlist[0]
-							clearme.insert(clearme.end(), otherpod->cell_list.begin(), otherpod->cell_list.end());
-						} else if (z == 100.) {
-							// add all cells in otherpod to resultlist[1]
-							flagme.insert(flagme.end(), otherpod->cell_list.begin(), otherpod->cell_list.end());
+					buildme->podlist.erase(otherpod); // don't even need to rebuild 'around' vector!
+				} else if (N[0].empty()) {			// means podit < otherpod
+					// if podit has no uniques but otherpod does, then podit is subset of otherpod...
+					changes = true;
+					otherpod->cell_list = N[1]; // reduce otherpod to only its uniques
+					otherpod->mines -= podit->mines; // subtract podit from otherpod
+					// if a pod would become 100 or 0, otherpod would do it here.
+					float z = otherpod->risk();
+					if (z == 0.) {
+						// add all cells in otherpod to clearme
+						clearme.insert(clearme.end(), otherpod->cell_list.begin(), otherpod->cell_list.end());
+					} else if (z == 100.) {
+						// add all cells in otherpod to flagme
+						flagme.insert(flagme.end(), otherpod->cell_list.begin(), otherpod->cell_list.end());
+					}
+				} else {
+					// begin the NOV-FLAGx2, NOV-FLAGx3, and NOV-SAFEx3 section!
+					// there are 5 stages of checks to know if FLAGx3 or SAFEx3 can be applied... A=podit, B1=otherpod, B2=secondpod
+					// decided to use "if not true, continue" syntax cuz I didn't want to indent 5 layers of nested if-statements
+					for (int s = b; s < around.size(); s++) { // start from b cuz only need all combos, not both orders of each combo
+						std::list<struct pod>::iterator secondpod;
+						if (s == b) {
+							secondpod = dummyitr; // NOV-FLAGx3 special case to check NOV-FLAGx2, use pod with value=0 and size=0
+						} else {
+							secondpod = around[s]; // normal case
+							// during normal case, NOV-FLAGx3 and NOV-SAFEx3 require minimum size = 4 and value = 2
+							if (podit->cell_list.size() < 4 || podit->mines < 2) { break; } 
+						}
+						// 1) A >= B1 + B2: if greater than, NOV-FLAG. if equal to, NOV-SAFE. 
+						// note: changed to instead be Z = A - B1 - B2, then Z > 0 or Z == 0. Equivalent logic, saves me some math later
+						int Z = (podit->mines - otherpod->mines) - secondpod->mines;
+						bool safemode = false; // must set flags because which passed makes a difference later on.
+						if ((Z == 0) && (s != b)) { safemode = true; } // do not try NOV-SAFEx3 during 0,0 special case
+						if (!(Z > 0 || safemode)) { continue; } // if neither is true, skip
+						// 2) |overlap(A,B1)| > B1
+						if (!(N[2].size() > otherpod->mines)) { continue; }
+						// 3) |overlap(A,B2)| > B2
+						// delay second call to find_nonoverlap as long as possible, so it might be skipped
+						// vector N holds comparison between A and B1, vector U holds comparison between A and B2
+						std::vector<std::vector<class cell *>> U = find_nonoverlap(podit->cell_list, secondpod->cell_list);
+						if (!(U[2].size() > otherpod->mines)) { continue; }
+						// 4) size(A) - |overlap(A,B1)| - |overlap(A,B2)| == Z, works whether Z is 0 or positive
+						if (!(((podit->cell_list.size() - N[2].size()) - U[2].size()) == Z)) { continue; }
+						// 5) |overlap( overlap(A,B1) , overlap(A,B2) )| == 0, AKA both overlapping sections must not overlap eachother
+						// delay third call to find_nonoverlap as long as possible, too, so it might be skipped
+						std::vector<std::vector<class cell *>> V = find_nonoverlap(N[2], U[2]);
+						if (!(V[2].size() == 0)) { continue; }
+						//////////////////////////////////////////////////////////////////
+						// if ALL of these conditions are met, then we can FINALLY apply the operations!!
+
+						// common operations:
+						//myprintfn(2, "NEW CODE IS ACTIVE\n");
+						changes = true;
+						// clear all O-unique cells and reduce O to its overlap area with podit
+						clearme.insert(clearme.end(), N[1].begin(), N[1].end());
+						otherpod->cell_list = N[2];
+
+						if (safemode) {
+							// NOV-SAFEx3: if safemode=true, then podit is completely covered by O+S, though they do spill outside podit
+							// clear all S-unique cells and reduce S to its overlap area with podit
+							clearme.insert(clearme.end(), U[1].begin(), U[1].end());
+							secondpod->cell_list = U[2];
+							// then erase podit! note: erasing podit (ME) isn't so simple, cuz then it won't be able to inc the iterator...
+							podit = buildme->podlist.erase(podit); erased_myself = true;
+							goto LABEL_CONTINUE_PODIT_LOOP;
+						} else {
+							// NOV-FLAGx3: if flagmode=true, then O+S cover all of podit except for Z cells. these cells are guaranteed flags.
+							// NOV-FLAGx2: don't touch S at all unless the 0,0 dummy pod wasnt used
+							if (s != b) {
+								// reduce S to its overlap area with podit, and clear all S-unique cells
+								clearme.insert(clearme.end(), U[1].begin(), U[1].end());
+								secondpod->cell_list = U[2];
+							}
+							// then reduce podit to only these Z cells and flag them! no erase
+							std::vector<std::vector<class cell *>> temp = find_nonoverlap(podit->cell_list, N[2]); // subtract O from podit
+							std::vector<std::vector<class cell *>> uniq = find_nonoverlap(temp[0], U[2]); // subtract S from podit
+							assert(uniq[0].size() == Z);
+							podit->cell_list = uniq[0];
+							podit->mines = Z;
+							flagme.insert(flagme.end(), uniq[0].begin(), uniq[0].end());
+							goto LABEL_CONTINUE_PODIT_LOOP;
 						}
 					}
 				}
-			}}
+			}
+			// erase returns the iterator to the one after the one it erased (or .end())
+			// i need to jump to the next iteration of podit loop, tho
+			// therefore whenever I erase podit, don't increment podit on that iteration of the loop
+		LABEL_CONTINUE_PODIT_LOOP:
+			if (erased_myself) { erased_myself = false; } else { podit++; } // implement my own ++ instead of in the for-loop
 		} // end for each pod
 	} while (changes);
 
+	// NOTE: turns out that you can't safely apply 121 logic to the chain
+
+
 	if (clearme.size() || flagme.size()) {
-		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, optimization found %i clear and %i flag\n", clearme.size(), flagme.size());
+		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in optimization, found %i clear and %i flag\n", clearme.size(), flagme.size());
 	}
 
 	// step 3: clear the clearme and flag the flagme
@@ -681,10 +795,7 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 	for (std::list<class cell *>::iterator fit = flagme.begin(); fit != flagme.end(); fit++) { // flag-list
 		int r = mygame.set_flag(*fit);
 		(*thingsdone)++;
-		if (r == 1) {
-			// game won!
-			return 1;
-		}
+		if (r == 1) { return 1; } // game won!
 	}
 
 	return 0;

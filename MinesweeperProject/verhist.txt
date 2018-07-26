@@ -114,7 +114,9 @@ v4.10: Implemented game-loss histogram! Still need to clean up stats as a result
 		Moved rand_from_list to basegame, split into list/vector versions and templatized 
 		Split "advanced solving/chain optimization" into its own function, returns chain and handles cells internally if needed
 		Smartguess accumulates stats into game_stats, so nothing changes run_stats until the end-of-game
-		
+		Added 2-way NOV-flag, and 3-way NOV-flag and NOV-safe to the "chain optimization" stage
+			Winrate, solve time, and recursion overflows are all utterly unchanged :(
+			Turns out that 121 logic can't be safely applied to the chain
 		
 		
 TODO:

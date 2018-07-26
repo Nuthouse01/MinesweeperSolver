@@ -19,7 +19,7 @@ X/Y/mines
 
 // #defines
 // sets the "default values" for each setting
-#define NUM_GAMES_def				100
+#define NUM_GAMES_def				100000
 #define SIZEX_def					30
 #define SIZEY_def					16
 #define NUM_MINES_def				95

@@ -80,8 +80,7 @@ void cell::set_status_satisfied() {
 // cellptr: if the given X and Y are valid, returns a pointer to the cell; otherwise returns NULL
 // during single-cell and multi-cell iterations, just use &field[x][y] because the X and Y are guaranteed not off the edge
 inline class cell * game::cellptr(int x, int y) {
-	if ((x < 0) || (x >= myruninfo.SIZEX) || (y < 0) || (y >= myruninfo.SIZEY))
-		return NULL;
+	if ((x < 0) || (x >= myruninfo.SIZEX) || (y < 0) || (y >= myruninfo.SIZEY)) { return NULL; }
 	return &field[x][y];
 }
 
@@ -340,7 +339,6 @@ int game::reset_for_game() {
 			if (t == 8) {
 				myprintfn(2, "Found an 8 cell when generating, you must be lucky! This is incredibly rare!\n");
 				eights++;
-				//myrunstats.games_with_eights++;
 			}
 		}
 	}
