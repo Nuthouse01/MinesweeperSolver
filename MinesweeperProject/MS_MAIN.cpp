@@ -132,8 +132,13 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 
 
 	// apply the defaults
+	//myruninfo.SIZEX = SIZEX_def;
+	int tempsizex = SIZEX_def;
+	//myruninfo.SIZEY = SIZEY_def; 
+	int tempsizey = SIZEY_def;
+	//myruninfo.NUM_MINES = NUM_MINES_def;
+	int tempnummines = NUM_MINES_def;
 	myruninfo.NUM_GAMES = NUM_GAMES_def;
-	myruninfo.SIZEX = SIZEX_def; myruninfo.SIZEY = SIZEY_def; myruninfo.NUM_MINES = NUM_MINES_def;
 	myruninfo.SPECIFY_SEED = SPECIFY_SEED_def;
 	myruninfo.SCREEN = SCREEN_def;
 	FIND_EARLY_ZEROS_var = FIND_EARLY_ZEROS_def;
@@ -158,12 +163,12 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			// convert and apply
 			myruninfo.NUM_GAMES = atoi(bufstr.c_str());
 			// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
-			if (myruninfo.SIZEY < 1) {
+			if (myruninfo.NUM_GAMES < 1) {
 				printf_s("ERR: #games cannot be zero or negative\n"); return 1;
 			}
 		}
 
-		printf_s("Field type, format X-Y-mines: [%i-%i-%i]  ", myruninfo.SIZEX, myruninfo.SIZEY, myruninfo.NUM_MINES);
+		printf_s("Field type, format X-Y-mines: [%i-%i-%i]  ", tempsizex, tempsizey, tempnummines);
 		std::getline(std::cin, bufstr);
 		if (bufstr.size() != 0) {
 			int f = 0; // the index currently examined
@@ -180,17 +185,17 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			// read the values and convert them to ints, then store them
 			std::string temp;
 			temp = bufstr.substr(0, indices[0]);
-			myruninfo.SIZEX = atoi(temp.c_str());
+			tempsizex = atoi(temp.c_str());
 			temp = bufstr.substr(indices[0] + 1, indices[1] - (indices[0] + 1));
-			myruninfo.SIZEY = atoi(temp.c_str());
+			tempsizey = atoi(temp.c_str());
 			temp = bufstr.substr(indices[1] + 1); // from here to the end
-			myruninfo.NUM_MINES = atoi(temp.c_str());
+			tempnummines = atoi(temp.c_str());
 
 			// error checking
-			if (myruninfo.SIZEX < 1) {printf_s("ERR: sizeX cannot be zero or negative\n"); return 1;}
-			if (myruninfo.SIZEY < 1) {printf_s("ERR: sizeY cannot be zero or negative\n"); return 1;}
-			if (myruninfo.NUM_MINES > (myruninfo.SIZEX * myruninfo.SIZEY)) {printf_s("ERR: more mines than squares in the field!\n"); return 1;}
-			if (myruninfo.NUM_MINES < 1) {printf_s("ERR: #mines cannot be zero or negative\n"); return 1;}
+			if (tempsizex < 1) {printf_s("ERR: sizeX cannot be zero or negative\n"); return 1;}
+			if (tempsizey < 1) {printf_s("ERR: sizeY cannot be zero or negative\n"); return 1;}
+			if (tempnummines > (tempsizex * tempsizey)) {printf_s("ERR: more mines than squares in the field!\n"); return 1;}
+			if (tempnummines < 1) {printf_s("ERR: #mines cannot be zero or negative\n"); return 1;}
 		}
 
 
@@ -232,8 +237,9 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			if (myruninfo.SCREEN > 2) { myruninfo.SCREEN = 2; }
 			if (myruninfo.SCREEN < 0) { myruninfo.SCREEN = 0; }
 		}
+		myruninfo.set_gamedata(tempsizex, tempsizey, tempnummines);
 		return 0;
-	}
+	} // end of LABEL_PROMPT and if there are no args
 
 	for (int i = 1; i < argc; i++) {
 
@@ -247,6 +253,7 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 
 		} else if (!strncmp(argv[i], "-def", 4)) {
 			printf_s("Running with default values!\n");
+			myruninfo.set_gamedata(tempsizex, tempsizey, tempnummines);
 			return 0;
 
 		} else if (!strncmp(argv[i], "-num", 4)) {
@@ -273,17 +280,17 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 				// read the values and convert them to ints, then store them
 				char * context = NULL;
 				char * chunk = strtok_s(argv[i + 1], "-",&context);
-				myruninfo.SIZEX = atoi(chunk);
+				tempsizex = atoi(chunk);
 				chunk = strtok_s(NULL, "-",&context);
-				myruninfo.SIZEY = atoi(chunk);
+				tempsizey = atoi(chunk);
 				chunk = strtok_s(NULL, "-",&context);
-				myruninfo.NUM_MINES = atoi(chunk);
+				tempnummines = atoi(chunk);
 
 				// error checking
-				if (myruninfo.SIZEX < 1) { printf_s("ERR: sizeX cannot be zero or negative\n"); return 1; }
-				if (myruninfo.SIZEY < 1) { printf_s("ERR: sizeY cannot be zero or negative\n"); return 1; }
-				if (myruninfo.NUM_MINES >(myruninfo.SIZEX * myruninfo.SIZEY)) { printf_s("ERR: more mines than squares in the field!\n"); return 1; }
-				if (myruninfo.NUM_MINES < 1) { printf_s("ERR: #mines cannot be zero or negative\n"); return 1; }
+				if (tempsizex < 1) { printf_s("ERR: sizeX cannot be zero or negative\n"); return 1; }
+				if (tempsizey < 1) { printf_s("ERR: sizeY cannot be zero or negative\n"); return 1; }
+				if (tempnummines >(tempsizex * tempsizey)) { printf_s("ERR: more mines than squares in the field!\n"); return 1; }
+				if (tempnummines < 1) { printf_s("ERR: #mines cannot be zero or negative\n"); return 1; }
 
 				i++; continue;
 			} else {
@@ -329,7 +336,7 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			return 1;
 		}
 	}
-
+	myruninfo.set_gamedata(tempsizex, tempsizey, tempnummines);
 	return 0;
 }
 
@@ -345,8 +352,8 @@ inline int play_game() {
 	 // reveal one cell (chosen at random or guaranteed to succeed)
 	if (!FIND_EARLY_ZEROS_var) {
 		// reveal a random cell (game loss is possible!)
-		mygamestats.luck_value_mult *= (1. - (float(myruninfo.NUM_MINES) / float(mygame.unklist.size())));
-		mygamestats.luck_value_sum += (1. - (float(myruninfo.NUM_MINES) / float(mygame.unklist.size())));
+		mygamestats.luck_value_mult *= (1. - (float(myruninfo.get_NUM_MINES()) / float(mygame.unklist.size())));
+		mygamestats.luck_value_sum += (1. - (float(myruninfo.get_NUM_MINES()) / float(mygame.unklist.size())));
 		r = mygame.reveal(rand_from_list(&mygame.unklist));
 		if (r == -1) { return 0; } // no need to log it, first-move loss when random-hunting is a handled situation
 		// if going to use smartguess, just pretend that the first guess was a smartguess
@@ -391,7 +398,7 @@ inline int play_game() {
 		// begin single-cell logic loop
 		while(1) {
 			action = 0;
-			for (int y = 0; y < myruninfo.SIZEY; y++) { for (int x = 0; x < myruninfo.SIZEX; x++) { // iterate over each cell
+			for (int y = 0; y < myruninfo.get_SIZEY(); y++) { for (int x = 0; x < myruninfo.get_SIZEX(); x++) { // iterate over each cell
 				class cell * me = &mygame.field[x][y];
 				if (me->get_status() != VISIBLE) { continue; } // SKIP
 
@@ -435,7 +442,7 @@ inline int play_game() {
 		while (1) {
 			action = 0; 
 			//clearlist.clear(); flaglist.clear();
-			for (int y = 0; y < myruninfo.SIZEY; y++) { for (int x = 0; x < myruninfo.SIZEX; x++) {// iterate over each cell
+			for (int y = 0; y < myruninfo.get_SIZEY(); y++) { for (int x = 0; x < myruninfo.get_SIZEX(); x++) {// iterate over each cell
 				class cell * me = &mygame.field[x][y];
 				if ((me->get_status() != VISIBLE) || (me->get_effective() == 0)) { continue; } // SKIP
 				
@@ -626,9 +633,9 @@ int main(int argc, char *argv[]) {
 	// full-run init:
 	// parse and store the input args here
 	// note to self: argc has # of input args, INCLUDING PROGRAM NAME, argv is pointers to c-strings
-	if (parse_input_args(argc, argv)) {
+	if (parse_input_args(argc, argv)==1) {
 		if(argc==1) {
-			system("pause"); // I know it was run from Windows Explorer so pause before it closes
+			system("pause"); // I know it was run from Windows Explorer (probably double-click) so pause before it closes
 		}
 		return 0; // abort execution
 	}
@@ -652,7 +659,7 @@ int main(int argc, char *argv[]) {
 	myprintfn(2, "Beginning MinesweeperSolver version %s\n", VERSION_STRING_def);
 
 	// logfile header info: mostly everything from the #defines
-	myprintfn(2, "Going to play %i games, with X/Y/mines = %i/%i/%i\n", myruninfo.NUM_GAMES, myruninfo.SIZEX, myruninfo.SIZEY, myruninfo.NUM_MINES);
+	myprintfn(2, "Going to play %i games, with X/Y/mines = %i/%i/%i\n", myruninfo.NUM_GAMES, myruninfo.get_SIZEX(), myruninfo.get_SIZEY(), myruninfo.get_NUM_MINES());
 	if (FIND_EARLY_ZEROS_var) {
 		myprintfn(2, "Using 'hunting' method = succeed early (uncover only zeroes until solving can begin)\n");
 	} else {
@@ -687,8 +694,8 @@ int main(int argc, char *argv[]) {
 
 
 	// init the 'game' object with the proper size
-	mygame = game(myruninfo.SIZEX, myruninfo.SIZEY);
-	myrunstats.init_histogram(myruninfo.NUM_MINES);
+	mygame.init(myruninfo.get_SIZEX(), myruninfo.get_SIZEY());
+	myrunstats.init_histogram(myruninfo.get_NUM_MINES());
 
 
 	for (int game = 0; game < myruninfo.NUM_GAMES; game++) {
@@ -726,14 +733,14 @@ int main(int argc, char *argv[]) {
 		if (r == 0) { // game loss
 			mygamestats.trans_map += "X";
 			myrunstats.games_lost++;
-			myrunstats.inc_histogram(myruninfo.NUM_MINES - mygame.get_mines_remaining());
+			myrunstats.inc_histogram(myruninfo.get_NUM_MINES() - mygame.get_mines_remaining());
 			// ................................. unused
 			myrunstats.num_guesses_in_losses += mygamestats.num_guesses;
 			myrunstats.total_luck_in_losses += mygamestats.luck_value_mult;
 			if (mygamestats.began_solving == false) {
 				myrunstats.games_lost_beginning++;
 			}
-			float remaining = float(mygame.get_mines_remaining()) / float(myruninfo.NUM_MINES);
+			float remaining = float(mygame.get_mines_remaining()) / float(myruninfo.get_NUM_MINES());
 			if (remaining > 0.85) {
 				myrunstats.games_lost_earlygame++; // 0-15% completed
 			} else if (remaining > 0.15) {

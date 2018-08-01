@@ -419,8 +419,8 @@ void riskholder::addrisk(class cell * foo, float newrisk) {
 struct riskreturn riskholder::findminrisk() {
 	std::list<class cell *> minlist = std::list<class cell *>();
 	float minrisk = 100.;
-	for (int m = 0; m < myruninfo.SIZEX; m++) {
-		for (int n = 0; n < myruninfo.SIZEY; n++) {
+	for (int m = 0; m < myruninfo.get_SIZEX(); m++) {
+		for (int n = 0; n < myruninfo.get_SIZEY(); n++) {
 			float j = finalrisk(m, n);
 			if ((j == -1.) || (j > minrisk))
 				continue;
@@ -618,8 +618,8 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 	// step 1: iterate over field, get 'visible' cells, use them as roots to build pods.
 	// non-optimized: includes duplicates, before pod-subtraction. interior_unk not yet modified.
 	// pods are added to the chain already sorted (reading order by root), as are their cell_list contents
-	for (int y = 0; y < myruninfo.SIZEY; y++) {
-		for (int x = 0; x < myruninfo.SIZEX; x++) { // iterate over each cell
+	for (int y = 0; y < myruninfo.get_SIZEY(); y++) {
+		for (int x = 0; x < myruninfo.get_SIZEX(); x++) { // iterate over each cell
 			if (mygame.field[x][y].get_status() == VISIBLE) {
 				buildme->podlist.push_back(pod(&mygame.field[x][y])); // constructor gets adj unks for the given root
 			}
@@ -788,7 +788,7 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 
 	static struct riskholder myriskholder;
 	if (myriskholder.riskarray.empty()) { // because it's static, init it like this only once
-		myriskholder = riskholder(myruninfo.SIZEX, myruninfo.SIZEY);
+		myriskholder = riskholder(myruninfo.get_SIZEX(), myruninfo.get_SIZEY());
 	}
 
 

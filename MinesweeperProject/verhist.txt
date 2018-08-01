@@ -118,6 +118,9 @@ v4.10: Implemented game-loss histogram! Still need to clean up stats as a result
 			Turns out that 121 logic can't be safely applied to the chain
 		Renamed find_nonoverlap to extract_overlap and moved to basegame
 		Implemented a 'luck/safety' tracker, display average safety of each guess (including initial)
+			Massive disparity between actual winrate vs winrate derived from avg luck per guess and avg # guesses...
+			Probably due to smartguess not calculating risks perfectly? Might be resolved if 'perfect' mode is implemented
+		Made a little bit of 'runinfo' private
 		
 		
 		

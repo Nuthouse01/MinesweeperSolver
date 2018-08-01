@@ -18,12 +18,18 @@
 // essential stuff like # of games to play, field size, # of mines, etc
 // this info is not at all secretive; shouldn't be changed after the runs begin, but you can't cheat by using or changing this info.
 class runinfo {
-public:
-	runinfo();
-	int NUM_GAMES;
-	int SIZEX;
+private:
+	int SIZEX; // these 3 can be set only once, but can be read whenever
 	int SIZEY;
 	int NUM_MINES;
+public:
+	runinfo();
+	void set_gamedata(int newx, int newy, int newmines);
+	inline int get_SIZEX() { return SIZEX; }
+	inline int get_SIZEY() { return SIZEY; }
+	inline int get_NUM_MINES() { return NUM_MINES; }
+
+	int NUM_GAMES;
 	int SPECIFY_SEED;
 	int SCREEN;
 	FILE * logfile;
@@ -50,14 +56,14 @@ private:
 	unsigned int mines_remaining; // can be read but not written
 public:
 	game(); // empty constructor, doesn't set up field_blank
-	game(int x, int y); // sets up field_blank
 	std::list<class cell *> zerolist; // zero-list, probably should be private but I dont care to figure it out
 	std::list<class cell *> unklist; // unknown-list, hopefully allows for faster "better rand"
 	std::vector<std::vector<class cell>> field; // the actual playing field; overwritten for each game
 	std::vector<std::vector<class cell>> field_blank;
 
-	unsigned int get_mines_remaining();
-	inline class cell * cellptr(int xxx, int yyy);
+	int init(int x, int y); // sets up field_blank
+	unsigned int inline get_mines_remaining() { return mines_remaining; }
+	class cell * cellptr(int xxx, int yyy);
 	std::vector<class cell *> get_adjacent(class cell * me);
 	std::vector<class cell *> filter_adjacent(class cell * me, cell_state target);
 	std::vector<class cell *> filter_adjacent(std::vector<class cell *> adj, cell_state target);
@@ -84,8 +90,8 @@ public:
 	short unsigned int x, y;
 	short unsigned int get_value();
 	short unsigned int get_effective();
-	cell_state get_status();
-	void set_status_satisfied();
+	inline cell_state get_status() { return status; }
+	inline void set_status_satisfied() { status = SATISFIED; }
 
 	friend int game::reveal(class cell * me);
 	friend int game::set_flag(class cell * me);

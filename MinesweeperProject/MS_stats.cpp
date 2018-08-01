@@ -89,8 +89,8 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 
 
 	myprintfn(2, "MinesweeperSolver version %s\n", VERSION_STRING_def);
-	myprintfn(2, "Games used X/Y/mines = %i/%i/%i, mine density = %4.1f%%\n", runinfoptr->SIZEX, runinfoptr->SIZEY, runinfoptr->NUM_MINES,
-		float(100. * float(runinfoptr->NUM_MINES) / float(runinfoptr->SIZEX * runinfoptr->SIZEY)));
+	myprintfn(2, "Games used X/Y/mines = %i/%i/%i, mine density = %4.1f%%\n", runinfoptr->get_SIZEX(), runinfoptr->get_SIZEY(), runinfoptr->get_NUM_MINES(),
+		float(100. * float(runinfoptr->get_NUM_MINES()) / float(runinfoptr->get_SIZEX() * runinfoptr->get_SIZEY())));
 	if (FIND_EARLY_ZEROS_var) {
 		myprintfn(2, "Using 'hunting' method = succeed early (uncover only zeroes until solving can begin)\n");
 	} else {
@@ -112,7 +112,7 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 	//myprintfn(2, "Avg luck/safety value in each win:         %7.3f%%\n", 100. * (float(total_luck_in_wins) / float(games_won)));
 
 	// TODO: add 'avg risk/safety for each guess' ?
-	// (1. - (float(runinfoptr->NUM_MINES) / float(runinfoptr->SIZEX * runinfoptr->SIZEY)));
+	// (1. - (float(runinfoptr->get_NUM_MINES()) / float(runinfoptr->get_SIZEX() * runinfoptr->get_SIZEY())));
 	// average luck per guess:
 	// (sum of luck from all guesses) / (num guesses in wins + num guesses in losses)
 	// (sum of luck from all guesses + initial) / (num guesses in wins + num guesses in losses + total games)
@@ -148,7 +148,7 @@ void game_stats::print_gamestats(int screen, class game * gameptr, class runinfo
 		strat_121, strat_nov_safe, strat_nov_flag);
 	myprintfn(screen, "Cells guessed: %i\n", num_guesses);
 	myprintfn(screen, "Chance of safely getting this far: %.4f%%\n", 100. * luck_value_mult);
-	myprintfn(screen, "Flags placed: %i / %i\n\n\n", runinfoptr->NUM_MINES - gameptr->get_mines_remaining(), runinfoptr->NUM_MINES);
+	myprintfn(screen, "Flags placed: %i / %i\n\n\n", runinfoptr->get_NUM_MINES() - gameptr->get_mines_remaining(), runinfoptr->get_NUM_MINES());
 	fflush(runinfoptr->logfile);
 }
 

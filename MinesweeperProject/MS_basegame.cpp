@@ -10,14 +10,23 @@
 
 // basic constructor
 runinfo::runinfo() {
-	NUM_GAMES = 0;
 	SIZEX = 0;
 	SIZEY = 0;
 	NUM_MINES = 0;
+	NUM_GAMES = 0;
 	SPECIFY_SEED = 0;
 	SCREEN = 0;
 	FILE * logfile = NULL;
 }
+// should be called once to set the x/y/mines, but no more than that! don't allow redefinitions
+void runinfo::set_gamedata(int newx, int newy, int newmines) {
+	if (SIZEX != 0 || SIZEY != 0 || NUM_MINES != 0) {
+		myprintfn(2, "HEY! NO CHEATING! Can't redefine game stats once its underway!\n");
+	} else {
+		SIZEX = newx; SIZEY = newy; NUM_MINES = newmines;
+	}
+}
+
 // constructor: with no args, don't do much
 game::game() {
 	mines_remaining = 0;
@@ -26,8 +35,8 @@ game::game() {
 	field.clear();
 	field_blank.clear();
 }
-// constructor: with args, allocate the field to be the proper size
-game::game(int xxx, int yyy) {
+// init: with args, allocate the field to be the proper size
+int game::init(int xxx, int yyy) {
 	game();
 	// create 'empty' field, for pasting onto the 'live' field to reset
 	class cell asdf2 = cell(); // needed for using the 'resize' command, I will overwrite the actual coords later
@@ -43,9 +52,7 @@ game::game(int xxx, int yyy) {
 			(field_blank[m][n]).y = n; // overwrite 0,0 with the correct coords
 		}
 	}
-}
-unsigned int game::get_mines_remaining() {
-	return mines_remaining;
+	return 0;
 }
 cell::cell() { // constructor
 	x = 0;
@@ -55,16 +62,10 @@ cell::cell() { // constructor
 	effective = 0;
 }
 short unsigned int cell::get_value() {
-	if (status == VISIBLE) { return value; } else { myprintfn(2, "HEY! NO CHEATING!\n"); return 100; }
+	if (status == VISIBLE) { return value; } else { myprintfn(2, "HEY! NO CHEATING! Can't peek at cell contents!\n"); return 100; }
 }
 short unsigned int cell::get_effective() {
-	if (status == VISIBLE) { return effective; } else { myprintfn(2, "HEY! NO CHEATING!\n"); return 100; }
-}
-cell_state cell::get_status() {
-	return status;
-}
-void cell::set_status_satisfied() {
-	status = SATISFIED;
+	if (status == VISIBLE) { return effective; } else { myprintfn(2, "HEY! NO CHEATING! Can't peek at cell contents!\n"); return 100; }
 }
 
 
@@ -73,8 +74,8 @@ void cell::set_status_satisfied() {
 
 // cellptr: if the given X and Y are valid, returns a pointer to the cell; otherwise returns NULL
 // during single-cell and multi-cell iterations, just use &field[x][y] because the X and Y are guaranteed not off the edge
-inline class cell * game::cellptr(int x, int y) {
-	if ((x < 0) || (x >= myruninfo.SIZEX) || (y < 0) || (y >= myruninfo.SIZEY)) { return NULL; }
+class cell * game::cellptr(int x, int y) {
+	if ((x < 0) || (x >= myruninfo.get_SIZEX()) || (y < 0) || (y >= myruninfo.get_SIZEY())) { return NULL; }
 	return &field[x][y];
 }
 
@@ -170,8 +171,8 @@ int game::set_flag(class cell * flagme) {
 	mines_remaining -= 1;
 	if (mines_remaining == 0) {
 		//try to validate the win: every mine is flagged, and every not-mine is not-flagged
-		for (int y = 0; y < myruninfo.SIZEY; y++) {
-			for (int x = 0; x < myruninfo.SIZEX; x++) { // iterate over each cell
+		for (int y = 0; y < myruninfo.get_SIZEY(); y++) {
+			for (int x = 0; x < myruninfo.get_SIZEX(); x++) { // iterate over each cell
 				class cell * v = &field[x][y];
 
 				if (v->value == MINE) {
@@ -248,12 +249,12 @@ void game::print_field(int mode, int screen) {
 	// build and print the field one row at a time
 
 	// top/bottom:
-	std::string top = std::string(((myruninfo.SIZEX + 2) * 2) - 1, '+') + "\n";
+	std::string top = std::string(((myruninfo.get_SIZEX() + 2) * 2) - 1, '+') + "\n";
 	myprintfn(screen, top.c_str());
 
 	std::string line;
-	for (int y = 0; y < myruninfo.SIZEY; y++) {
-		for (int x = 0; x < myruninfo.SIZEX; x++) {
+	for (int y = 0; y < myruninfo.get_SIZEY(); y++) {
+		for (int x = 0; x < myruninfo.get_SIZEX(); x++) {
 			if ((field[x][y].status == UNKNOWN) && (mode != 1)) {
 				// if mode==full, fall through
 				line += "- "; continue;
@@ -294,16 +295,16 @@ void game::print_field(int mode, int screen) {
 // returns the number of 8-cells found when generating (just because I can)
 int game::reset_for_game() {
 	// reset the 'live' field
-	//memcpy(field, field_blank, SIZEX * SIZEY * sizeof(class cell)); // paste
+	//memcpy(field, field_blank, get_SIZEX() * get_SIZEY() * sizeof(class cell)); // paste
 	field = field_blank; // paste
 
 	zerolist.clear(); // reset the list
 	unklist.clear();
-	mines_remaining = myruninfo.NUM_MINES;
+	mines_remaining = myruninfo.get_NUM_MINES();
 
 	// generate the mines
-	for (int i = 0; i < myruninfo.NUM_MINES; i++) {
-		int x = rand() % myruninfo.SIZEX; int y = rand() % myruninfo.SIZEY;
+	for (int i = 0; i < myruninfo.get_NUM_MINES(); i++) {
+		int x = rand() % myruninfo.get_SIZEX(); int y = rand() % myruninfo.get_SIZEY();
 		if (field[x][y].value == MINE) {
 			i--; continue; // if already a mine, generate again
 		}
@@ -313,8 +314,8 @@ int game::reset_for_game() {
 
 	int eights = 0;
 	// set up adjacency values, also populate zero-list and unk-list
-	for (int y = 0; y < myruninfo.SIZEY; y++) {
-		for (int x = 0; x < myruninfo.SIZEX; x++) { // iterate over the field
+	for (int y = 0; y < myruninfo.get_SIZEY(); y++) {
+		for (int x = 0; x < myruninfo.get_SIZEX(); x++) { // iterate over the field
 			unklist.push_back(&field[x][y]); // everything starts out in the unklist
 
 			if (field[x][y].value == MINE)
@@ -362,7 +363,7 @@ void myprintfn(int p, const char* fmt, ...) {
 
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
 inline int compare_two_cells(class cell * a, class cell * b) {
-	return ((b->y * myruninfo.SIZEX) + b->x) - ((a->y * myruninfo.SIZEX) + a->x);
+	return ((b->y * myruninfo.get_SIZEX()) + b->x) - ((a->y * myruninfo.get_SIZEX()) + a->x);
 }
 // if a goes before b, return true... needed for consistient sorting
 inline bool sort_by_position(class cell * a, class cell * b) {
