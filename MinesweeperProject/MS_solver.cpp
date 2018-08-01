@@ -521,27 +521,6 @@ bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a,
 
 
 
-// find_nonoverlap: takes two vectors of cells, returns (first_vect_unique) (second_vect_unique) (overlap)
-// TODO: rename this function? also possibly move to basegame
-std::vector<std::vector<class cell *>> find_nonoverlap(std::vector<class cell *> me_unk, std::vector<class cell *> other_unk) {
-	std::vector<class cell *> overlap = std::vector<class cell *>();
-	for (int i = 0; i < me_unk.size(); i++) { // for each cell in me_unk...
-		for (int j = 0; j < other_unk.size(); j++) { // ...compare against each cell in other_unk...
-			if (me_unk[i] == other_unk[j]) {// ...until there is a match!
-				overlap.push_back(me_unk[i]);
-				me_unk.erase(me_unk.begin() + i);
-				other_unk.erase(other_unk.begin() + j); // not sure if this makes it more or less efficient...
-				i--; // need to counteract the i++ that happens in outer loop
-				break; // cell at this position can only match once
-			}
-		}
-	}
-	std::vector<std::vector<class cell *>> retme;
-	retme.push_back(me_unk); retme.push_back(other_unk); retme.push_back(overlap);
-	return retme;
-}
-
-
 // determine all ways to choose K from N, return a VECTOR of VECTORS of INTS
 // result is a list of lists of indices from 0 to N-1
 // ex: comb(3,5)
@@ -593,7 +572,7 @@ inline int factorial(int x) {
 // ROADMAP
 // TODO: update this roadmap with the "chain solver" strategy
 // 1)build the pods from visible, allow for dupes, no link cells yet. is stored in the "master chain". don't modify interior_unk yet
-// 2)iterate over pods, check for dupes and subsets (call find_nonoverlap on each pod with root in 5x5 around my root)
+// 2)iterate over pods, check for dupes and subsets (call extract_overlap on each pod with root in 5x5 around my root)
 // note if a pod becomes 100% or 0%, loop until no changes happen
 // 3)if any pods became 100% or 0%, return with those
 // 4)iterate again, removing pod contents from 'interior_unk'. Done here so there are fewer dupe pods, less time searching thru interior_unk
@@ -633,7 +612,6 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 		dummyitr = dummylist.begin(); // must have an iterator to the dummy, but it doesn't need to be in the same list as the others
 	}
 
-
 	std::list<class cell *> clearme;
 	std::list<class cell *> flagme;
 
@@ -648,13 +626,9 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 		}
 	}
 
-	// step 2: iterate over pods, check for dupes and subsets (call find_nonoverlap on each pod with root in 5x5 around my root)
+	// step 2: iterate over pods, check for dupes and subsets (call extract_overlap on each pod with root in 5x5 around my root)
 	// this is where the "advanced solving" comes into play
 	// note if a pod becomes 100% or 0%... repeat until no changes are done. when deleting pods, what remains will still be in sorted order
-
-	// NOV-FLAGx3:
-	// requires each smaller pod to have overlap of 2 or more & value less than overlap size
-	// *** each contributing smallpod needs to contribute more overlap than mines that could go in it
 
 	/*
 	for each pod,
@@ -677,7 +651,7 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 			for (int b = 0; b < around.size(); b++) {
 				std::list<struct pod>::iterator otherpod = around[b]; // for each pod 'otherpod' with root within 5x5 found...
 
-				std::vector<std::vector<class cell *>> N = find_nonoverlap(podit->cell_list, otherpod->cell_list);
+				std::vector<std::vector<class cell *>> N = extract_overlap(podit->cell_list, otherpod->cell_list);
 
 				if (N[0].empty() && N[1].empty()) { // means podit == otherpod
 					// if total duplicate, delete OTHER (not me)
@@ -719,21 +693,20 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 						// 2) |overlap(A,B1)| > B1
 						if (!(N[2].size() > otherpod->mines)) { continue; }
 						// 3) |overlap(A,B2)| > B2
-						// delay second call to find_nonoverlap as long as possible, so it might be skipped
+						// delay second call to extract_overlap as long as possible, so it might be skipped
 						// vector N holds comparison between A and B1, vector U holds comparison between A and B2
-						std::vector<std::vector<class cell *>> U = find_nonoverlap(podit->cell_list, secondpod->cell_list);
+						std::vector<std::vector<class cell *>> U = extract_overlap(podit->cell_list, secondpod->cell_list);
 						if (!(U[2].size() > otherpod->mines)) { continue; }
 						// 4) size(A) - |overlap(A,B1)| - |overlap(A,B2)| == Z, works whether Z is 0 or positive
 						if (!(((podit->cell_list.size() - N[2].size()) - U[2].size()) == Z)) { continue; }
 						// 5) |overlap( overlap(A,B1) , overlap(A,B2) )| == 0, AKA both overlapping sections must not overlap eachother
-						// delay third call to find_nonoverlap as long as possible, too, so it might be skipped
-						std::vector<std::vector<class cell *>> V = find_nonoverlap(N[2], U[2]);
+						// delay third call to extract_overlap as long as possible, too, so it might be skipped
+						std::vector<std::vector<class cell *>> V = extract_overlap(N[2], U[2]);
 						if (!(V[2].size() == 0)) { continue; }
 						//////////////////////////////////////////////////////////////////
 						// if ALL of these conditions are met, then we can FINALLY apply the operations!!
 
 						// common operations:
-						//myprintfn(2, "NEW CODE IS ACTIVE\n");
 						changes = true;
 						// clear all O-unique cells and reduce O to its overlap area with podit
 						clearme.insert(clearme.end(), N[1].begin(), N[1].end());
@@ -756,8 +729,8 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 								secondpod->cell_list = U[2];
 							}
 							// then reduce podit to only these Z cells and flag them! no erase
-							std::vector<std::vector<class cell *>> temp = find_nonoverlap(podit->cell_list, N[2]); // subtract O from podit
-							std::vector<std::vector<class cell *>> uniq = find_nonoverlap(temp[0], U[2]); // subtract S from podit
+							std::vector<std::vector<class cell *>> temp = extract_overlap(podit->cell_list, N[2]); // subtract O from podit
+							std::vector<std::vector<class cell *>> uniq = extract_overlap(temp[0], U[2]); // subtract S from podit
 							assert(uniq[0].size() == Z);
 							podit->cell_list = uniq[0];
 							podit->mines = Z;
@@ -776,7 +749,6 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 	} while (changes);
 
 	// NOTE: turns out that you can't safely apply 121 logic to the chain
-
 
 	if (clearme.size() || flagme.size()) {
 		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in optimization, found %i clear and %i flag\n", clearme.size(), flagme.size());
@@ -843,7 +815,7 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 					std::list<struct pod>::iterator otherpod = master_chain->root_to_pod(other);
 					if (otherpod == master_chain->podlist.end()) { continue; } // some pods will have been optimized away
 																			  // for each pod 'otherpod' with root within 5x5 found...
-					std::vector<std::vector<class cell *>> n = find_nonoverlap(podit->cell_list, otherpod->cell_list);
+					std::vector<std::vector<class cell *>> n = extract_overlap(podit->cell_list, otherpod->cell_list);
 					// ... only create links within podit!
 					for (int i = 0; i < n[2].size(); i++) {
 						podit->add_link(n[2][i], otherpod->root);
@@ -965,10 +937,14 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 	//} else 
 	if (interior_risk < myriskreturn.minrisk) {
 		// interior is safer
+		gstats->luck_value_mult *= (1. - (interior_risk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
+		gstats->luck_value_sum += (1. - (interior_risk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
 		results.clearme.push_back(rand_from_list(&interior_list));
 		results.method = 1;
 	} else {
 		// border is safer, or they are tied
+		gstats->luck_value_mult *= (1. - (myriskreturn.minrisk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
+		gstats->luck_value_sum += (1. - (myriskreturn.minrisk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
 		results.clearme.push_back(rand_from_list(&myriskreturn.minlist));
 		results.method = 1;
 	}
@@ -1235,7 +1211,7 @@ int strat_singlecell(class cell * me, int * thingsdone) {
 // unlike the other strategies, this isn't based in logic so much... this is just a pattern I noticed.
 // return: 1=win/-1=loss/0=continue (except cannot win, ever, and cannot lose unless something is seriously out of whack)
 // NEW FORMAT: IN-PLACE VERSION, clears the cells here
-int strat_121_cross_IP(class cell * center, struct game_stats * gstats, int * thingsdone) {
+int strat_121_cross(class cell * center, struct game_stats * gstats, int * thingsdone) {
 	if (center->get_effective() != 2) { return 0; }
 	std::vector<class cell *> adj = mygame.get_adjacent(center);
 	if (adj.size() == 3) // must be in a corner
@@ -1291,7 +1267,7 @@ int strat_121_cross_IP(class cell * center, struct game_stats * gstats, int * th
 // X(other) = 1/2/3/4,  Z = 1/2/3/4/5/6
 // return: 1=win/-1=loss/0=continue (except cannot lose here because it doesn't reveal cells here)
 // NEW FORMAT: IN-PLACE VERSION, clears the cells here
-int strat_nonoverlap_flag_IP(class cell * center, struct game_stats * gstats, int * thingsdone) {
+int strat_nonoverlap_flag(class cell * center, struct game_stats * gstats, int * thingsdone) {
 	if ((center->get_effective() < 2) || (center->get_effective() == 8)) { return 0; } // center must be 2-7
 	std::vector<class cell *> me_unk = mygame.filter_adjacent(center, UNKNOWN);
 	std::vector<class cell *> other_unk;
@@ -1305,7 +1281,7 @@ int strat_nonoverlap_flag_IP(class cell * center, struct game_stats * gstats, in
 
 		other_unk = mygame.filter_adjacent(other, UNKNOWN);
 
-		std::vector<std::vector<class cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
+		std::vector<std::vector<class cell *>> nonoverlap = extract_overlap(me_unk, other_unk);
 		// checking if OTHER is a subset of ME, AKA ME has some extra unique cells
 		if (nonoverlap[0].size() == z) {
 			gstats->strat_nov_flag++;
@@ -1330,7 +1306,7 @@ int strat_nonoverlap_flag_IP(class cell * center, struct game_stats * gstats, in
 //Compare against any other same-value cell in the 5x5 region minus corners
 // return: 1=win/-1=loss/0=continue (except cannot win, ever, and cannot lose unless something is seriously out of whack)
 // NEW FORMAT: IN-PLACE VERSION, clears the cells here
-int strat_nonoverlap_safe_IP(class cell * center, struct game_stats * gstats, int * thingsdone) {
+int strat_nonoverlap_safe(class cell * center, struct game_stats * gstats, int * thingsdone) {
 	if (center->get_effective() > 3) { return 0; } // only works for center = 1/2/3
 	std::vector<class cell *> me_unk = mygame.filter_adjacent(center, UNKNOWN);
 	std::vector<class cell *> other_unk;
@@ -1343,7 +1319,7 @@ int strat_nonoverlap_safe_IP(class cell * center, struct game_stats * gstats, in
 		other_unk = mygame.filter_adjacent(other, UNKNOWN);
 		if (me_unk.size() >= other_unk.size()) { continue; } // shortcut, can't be subset if it's bigger or equal
 
-		std::vector<std::vector<class cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
+		std::vector<std::vector<class cell *>> nonoverlap = extract_overlap(me_unk, other_unk);
 		// checking if ME is a subset of OTHER
 		if (nonoverlap[0].empty() && !(nonoverlap[1].empty())) {
 			int retme_sub = 0;
@@ -1423,7 +1399,7 @@ int strat_nonoverlap_flag_Q(class cell * center, struct game_stats * gstats, std
 
 			other_unk = mygame.filter_adjacent(other, UNKNOWN);
 
-			std::vector<std::vector<class cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
+			std::vector<std::vector<class cell *>> nonoverlap = extract_overlap(me_unk, other_unk);
 			// checking if OTHER is a subset of ME, AKA ME has some extra unique cells
 			if (nonoverlap[0].size() == z) {
 				gstats->strat_nov_flag++;
@@ -1451,7 +1427,7 @@ int strat_nonoverlap_safe_Q(class cell * center, struct game_stats * gstats, std
 		other_unk = mygame.filter_adjacent(other, UNKNOWN);
 		if (me_unk.size() >= other_unk.size()) { continue; } // shortcut, can't be subset if it's bigger or equal
 
-		std::vector<std::vector<class cell *>> nonoverlap = find_nonoverlap(me_unk, other_unk);
+		std::vector<std::vector<class cell *>> nonoverlap = extract_overlap(me_unk, other_unk);
 		// checking if ME is a subset of OTHER
 		if (nonoverlap[0].empty() && !(nonoverlap[1].empty())) {
 			clearlist->insert(clearlist->end(), nonoverlap[1].begin(), nonoverlap[1].end());

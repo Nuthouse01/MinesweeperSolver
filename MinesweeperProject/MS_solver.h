@@ -198,7 +198,6 @@ inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator>
 bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
 bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
 
-std::vector<std::vector<class cell *>> find_nonoverlap(std::vector<class cell *> me_unk, std::vector<class cell *> other_unk);
 std::list<std::vector<int>> comb(int K, int N);
 inline int comb_int(int K, int N);
 inline int factorial(int x);
@@ -218,9 +217,9 @@ int strat_singlecell(class cell * me, int * thingsdone);
 
 
 // multi-cell strategies
-int strat_121_cross_IP(class cell * center, struct game_stats * gstats, int * thingsdone);
-int strat_nonoverlap_flag_IP(class cell * center, struct game_stats * gstats, int * thingsdone);
-int strat_nonoverlap_safe_IP(class cell * center, struct game_stats * gstats, int * thingsdone);
+int strat_121_cross(class cell * center, struct game_stats * gstats, int * thingsdone);
+int strat_nonoverlap_flag(class cell * center, struct game_stats * gstats, int * thingsdone);
+int strat_nonoverlap_safe(class cell * center, struct game_stats * gstats, int * thingsdone);
 
 //int strat_121_cross_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * clearlist);
 //int strat_nonoverlap_flag_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * flaglist);

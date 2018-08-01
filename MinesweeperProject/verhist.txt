@@ -107,7 +107,6 @@ v4.9: Logs go to LOGS folder, creates the folder if its not there already
 		Slightly changed how some 'globals' are initialized
 		
 v4.10: Implemented game-loss histogram! Still need to clean up stats as a result of this
-			(TODO: cleanup stat tracking and end-game printout, remove obsolete stuff)
 		Cleaned up #includes, reduced to only what's necessary where its necessary
 		Made single-cell logic into a function, created new convention/standard for the logic/rule functions
 		Refined the multi-cell logic, turns out 'queueing' strategy doesn't offer significant improvement
@@ -117,18 +116,14 @@ v4.10: Implemented game-loss histogram! Still need to clean up stats as a result
 		Added 2-way NOV-flag, and 3-way NOV-flag and NOV-safe to the "chain optimization" stage
 			Winrate, solve time, and recursion overflows are all utterly unchanged :(
 			Turns out that 121 logic can't be safely applied to the chain
+		Renamed find_nonoverlap to extract_overlap and moved to basegame
+		Implemented a 'luck/safety' tracker, display average safety of each guess (including initial)
+		
 		
 		
 TODO:
 *rename "multi-cell logic" to "bi-cell logic" and rename the advanced solving to "multi-cell logic"?
 *break "smartguess" into multiple smaller functions??? unsure
-
-*refine iteration method in advanced solving? 
-	currently iterate until nothing changes
-	perhaps use random order? nah thats a bad plan
-	maybe try to do something like the recursive flag-placer? queue up anything changed as the result of a change?
-*add NOV-flag to advanced solving, pair-compare at least, perhaps even multi-compare (what are the limits?)
-*NOTE: forget about the "different orders produce different results" thing, and dont worry too hard about getting NOV-flag perfect
 
 *from guessing function, return 'risk/safety/luck' value along with chosen cell; accumulate as game goes on, print in gamestats
 
@@ -149,6 +144,7 @@ TODO:
 		
 		
 	endsolver: (usually doesn't find any conclusive answer)
+		note: perhaps it should be used when interior_list is small or near-empty? and should be disabled when the overflow valve is triggered
 		if near the end, recursion returns more info
 			recurse to find discrete allocations to satisfy each chain
 		if near the end, use this extra info

@@ -19,7 +19,7 @@ X/Y/mines
 
 // #defines
 // sets the "default values" for each setting
-#define NUM_GAMES_def				100000
+#define NUM_GAMES_def				1000
 #define SIZEX_def					30
 #define SIZEY_def					16
 #define NUM_MINES_def				95
@@ -29,7 +29,7 @@ X/Y/mines
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 // -1: logfile is empty except for run-end results
-#define SCREEN_def					-1
+#define SCREEN_def					0
 // if SPECIFY_SEED = 0, will generate a new seed from current time
 #define SPECIFY_SEED_def			0
 

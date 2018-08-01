@@ -35,6 +35,14 @@ struct game_stats {
 	int smartguess_attempts;
 	float smartguess_diff;
 	int smartguess_valves_tripped;
+	float luck_value_mult; //
+	float luck_value_sum;
+	// every time a guess is made, multiply into this the chance that the guess is SAFE
+	// NOTE: do I want to take into account the initial guess? probably...
+	// starts at 1, if I guess a 1/3 = 33% risk = 67% safe, then luck *= .67
+	// if =.67, if I guess another 1/3 then luck *= .67
+	// if =.44, if i guess a 1/2 = 50% risk = 50% safe, then luck *= .5, would be .22
+	// not yet sure how I want to display it tho
 };
 
 // win/loss stats for a single program run
@@ -45,7 +53,6 @@ struct run_stats {
 	void inc_histogram(int minesplaced);
 	void print_histogram(int numrows);
 
-
 	long start;
 	int games_total;			// total games played to conclusion (not really needed but w/e)
 
@@ -54,31 +61,31 @@ struct run_stats {
 	int games_won_guessing;		// games won by "end-game guessing"
 
 	int games_lost;				// total games lost
-	int games_lost_beginning;	// games lost before any logic could be applied (0 when hunting correctly)
-	int games_lost_earlygame;	// 0-15% completed
-	int games_lost_midgame;		// 15-85% completed
-	int games_lost_lategame;	// 85-99% completed
+	int games_lost_beginning;	// // games lost before any logic could be applied (0 when hunting correctly)
+	int games_lost_earlygame;	// // 0-15% completed
+	int games_lost_midgame;		// // 15-85% completed
+	int games_lost_lategame;	// // 85-99% completed
 	int games_lost_unexpectedly;// losses from other situations (should be 0)
 
 	std::vector<int> game_loss_histogram;
 	// histogram: tracks how many games were lost with 1 mine remaining, 2 mines remaining, 3 mines remaining, etc
 	// but instead it's reversed, and counts how many games lost after placing 0 mines, 1 mine, 2 mines, etc (vector indices)
-	// TODO: decide if, when displayed, "0 placed" is part of the graphic or a separate number
 
 	int strat_121_total;
 	int strat_nov_safe_total;
 	int strat_nov_flag_total;
-	int num_guesses_total;
+	int num_guesses_in_wins;
+	int num_guesses_in_losses;
 
 	int smartguess_attempts_total;
 	float smartguess_diff_total;
 	int smartguess_valves_tripped_total;
 	int games_with_eights;
+
+	float total_luck_in_wins; //
+	float total_luck_in_losses; //
+	float total_luck_per_guess;
 };
-
-
-
-
 
 
 #endif

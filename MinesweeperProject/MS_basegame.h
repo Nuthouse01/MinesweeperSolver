@@ -15,7 +15,7 @@
 
 
 
-
+// essential stuff like # of games to play, field size, # of mines, etc
 // this info is not at all secretive; shouldn't be changed after the runs begin, but you can't cheat by using or changing this info.
 class runinfo {
 public:
@@ -100,6 +100,7 @@ public:
 void myprintfn(int p, const char* fmt, ...);
 inline bool sort_by_position(class cell * a, class cell * b);
 inline int compare_two_cells(class cell * a, class cell * b);
+std::vector<std::vector<class cell *>> extract_overlap(std::vector<class cell *> me_unk, std::vector<class cell *> other_unk);
 
 
 
@@ -112,12 +113,12 @@ template <class foobar> foobar rand_from_list(std::list<foobar> * fromme) {
 	for (int i = 0; i < f; i++) { iter++; } // iterate to this position
 	return *iter;
 }
-
+/* currently unused
 template <class ttttt> ttttt rand_from_vect(std::vector<ttttt> * fromme) {
-	if (fromme->empty()) { return NULL; } // NOTE: bad if this is supposed to return an iterator!!
+	if (fromme->empty()) { return NULL; }
 	int f = rand() % fromme->size();
 	return (*fromme)[f];
 }
-
+*/
 
 #endif

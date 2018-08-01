@@ -20,10 +20,12 @@ game_stats::game_stats() {
 	strat_nov_safe = 0;
 	strat_nov_flag = 0;
 	num_guesses = 0;
-	began_solving = false; //
+	began_solving = false;
 	smartguess_attempts = 0;
 	smartguess_diff = 0.;
 	smartguess_valves_tripped = 0;
+	luck_value_mult = 1.; //
+	luck_value_sum = 0.;
 }
 
 // simple init, also sets start time
@@ -45,11 +47,15 @@ run_stats::run_stats() {
 	strat_121_total = 0;
 	strat_nov_safe_total = 0;
 	strat_nov_flag_total = 0;
-	num_guesses_total = 0;
+	num_guesses_in_wins = 0;
+	num_guesses_in_losses = 0; //
 	smartguess_attempts_total = 0;
 	smartguess_diff_total = 0.;
 	smartguess_valves_tripped_total = 0;
 	games_with_eights = 0;
+	total_luck_in_wins = 0.; //
+	total_luck_in_losses = 0.; //
+	total_luck_per_guess = 0.;
 
 	game_loss_histogram.clear();
 }
@@ -99,24 +105,32 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 	}
 	myprintfn(2, "Average time per game:                     %8.4f sec\n", (float(elapsed_sec) / float(games_total)));
 	myprintfn(2, "Average 121-cross uses per game:           %5.1f\n", (float(strat_121_total) / float(games_total)));
-	myprintfn(2, "Average nonoverlap-flag uses per game:     %5.1f\n", (float(strat_nov_flag_total) / float(games_total)));
-	myprintfn(2, "Average nonoverlap-safe uses per game:     %5.1f\n", (float(strat_nov_safe_total) / float(games_total)));
-	myprintfn(2, "Average number of guesses per game:        %6.2f + initial guess\n\n", (float(num_guesses_total) / float(games_total)));
+	myprintfn(2, "Avg nonoverlap-flag (simple) per game:     %5.1f\n", (float(strat_nov_flag_total) / float(games_total)));
+	myprintfn(2, "Avg nonoverlap-safe (simple) per game:     %5.1f\n", (float(strat_nov_safe_total) / float(games_total)));
+	myprintfn(2, "Avg number of guesses needed to win:       %6.2f + initial guess\n", (float(num_guesses_in_wins) / float(games_won)));
+	myprintfn(2, "Average safety per guess:                  %7.3f%%\n", 100. * (float(total_luck_per_guess) / float(games_total + num_guesses_in_losses + num_guesses_in_wins))); // everything
+	//myprintfn(2, "Avg luck/safety value in each win:         %7.3f%%\n", 100. * (float(total_luck_in_wins) / float(games_won)));
+
+	// TODO: add 'avg risk/safety for each guess' ?
+	// (1. - (float(runinfoptr->NUM_MINES) / float(runinfoptr->SIZEX * runinfoptr->SIZEY)));
+	// average luck per guess:
+	// (sum of luck from all guesses) / (num guesses in wins + num guesses in losses)
+	// (sum of luck from all guesses + initial) / (num guesses in wins + num guesses in losses + total games)
+	if (games_with_eights != 0) {
+	myprintfn(2, "    Games with 8-adj cells:              %5i\n", games_with_eights);
+	}
+	myprintfn(2, "\n");
 	myprintfn(2, "Total games played:                     %6i\n", games_total);
 
-	if (games_with_eights != 0) {
-		myprintfn(2, "    Games with 8-adj cells:              %5i\n", games_with_eights);
-	}
 	myprintfn(2, "    Total games won:                     %5i   %5.1f%%    -----\n", games_won, (100. * float(games_won) / float(games_total)));
 	myprintfn(2, "        Games won without guessing:      %5i   %5.1f%%   %5.1f%%\n", games_won_noguessing, (100. * float(games_won_noguessing) / float(games_total)), (100. * float(games_won_noguessing) / float(games_won)));
 	myprintfn(2, "        Games won that required guessing:%5i   %5.1f%%   %5.1f%%\n", games_won_guessing, (100. * float(games_won_guessing) / float(games_total)), (100. * float(games_won_guessing) / float(games_won)));
 	myprintfn(2, "    Total games lost:                    %5i   %5.1f%%    -----\n", games_lost, (100. * float(games_lost) / float(games_total)));
-	myprintfn(2, "        Games lost in the first move(s): %5i   %5.1f%%   %5.1f%%\n", games_lost_beginning, (100. * float(games_lost_beginning) / float(games_total)), (100. * float(games_lost_beginning) / float(games_lost)));
-	myprintfn(2, "        Games lost early      (1-15%%):   %5i   %5.1f%%   %5.1f%%\n", games_lost_earlygame - games_lost_beginning, (100. * float(games_lost_earlygame - games_lost_beginning) / float(games_total)), (100. * float(games_lost_earlygame - games_lost_beginning) / float(games_lost)));
-	myprintfn(2, "        Games lost in midgame (15-85%%):  %5i   %5.1f%%   %5.1f%%\n", games_lost_midgame, (100. * float(games_lost_midgame) / float(games_total)), (100. * float(games_lost_midgame) / float(games_lost)));
-	myprintfn(2, "        Games lost in lategame(85-99%%):  %5i   %5.1f%%   %5.1f%%\n", games_lost_lategame, (100. * float(games_lost_lategame) / float(games_total)), (100. * float(games_lost_lategame) / float(games_lost)));
+	myprintfn(2, "        Games lost before 1rst flag(<1%%):%5i   %5.1f%%   %5.1f%%\n", game_loss_histogram[0], (100. * float(game_loss_histogram[0]) / float(games_total)), (100. * float(game_loss_histogram[0]) / float(games_lost)));
+	myprintfn(2, "        Games lost while solving(1-99%%): %5i   %5.1f%%   %5.1f%%\n", games_lost - game_loss_histogram[0], (100. * float(games_lost - game_loss_histogram[0]) / float(games_total)), (100. * float(games_lost - game_loss_histogram[0]) / float(games_lost)));
+	// since I have the histogram I don't need to break it down further than "in the histogram vs not"
 	if (games_lost_unexpectedly != 0) {
-		myprintfn(2, "        Games lost unexpectedly:         %5i   %5.1f%%   %5.1f%%\n", games_lost_unexpectedly, (100. * float(games_lost_unexpectedly) / float(games_total)), (100. * float(games_lost_unexpectedly) / float(games_lost)));
+	myprintfn(2, "        Games lost unexpectedly:         %5i   %5.1f%%   %5.1f%%\n", games_lost_unexpectedly, (100. * float(games_lost_unexpectedly) / float(games_total)), (100. * float(games_lost_unexpectedly) / float(games_lost)));
 	}
 	myprintfn(2, "\n");
 
@@ -133,11 +147,12 @@ void game_stats::print_gamestats(int screen, class game * gameptr, class runinfo
 	myprintfn(screen, "121-cross hits: %i, nonoverlap-safe hits: %i, nonoverlap-flag hits: %i\n",
 		strat_121, strat_nov_safe, strat_nov_flag);
 	myprintfn(screen, "Cells guessed: %i\n", num_guesses);
+	myprintfn(screen, "Chance of safely getting this far: %.4f%%\n", 100. * luck_value_mult);
 	myprintfn(screen, "Flags placed: %i / %i\n\n\n", runinfoptr->NUM_MINES - gameptr->get_mines_remaining(), runinfoptr->NUM_MINES);
-	// TODO: create and also print "luck value"
 	fflush(runinfoptr->logfile);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // once number of mines is known, set up the histogram
 void run_stats::init_histogram(int num_mines) {
@@ -149,13 +164,10 @@ void run_stats::init_histogram(int num_mines) {
 void run_stats::inc_histogram(int minesplaced) {
 	game_loss_histogram[minesplaced]++;
 }
-// print a bar graph of the losses, 10? rows
+// print a bar graph of the losses, configurable resolution
 // excludes any "first move" losses, game_loss_histogram[0]
-// NOTE: when displayed, bars will be horizontal rows, (TODO: or will it?) but when talking about it, I will picture them as vertical columns
-// when losing resolution horizontally (from 89 entries to 10), must interpolate to prevent spikes from forming
-// if barwidth = 2.2, it could range from 7.9 to 10.1 (containing 8/9/10) and then from 10.1 to 12.3 (containing 11/12)
-// to solve this, border zones must be split between the categories they're going into
-// I will also lose resolution vertically when it is printed with ASCII, but can't do anything about that
+// NOTE: when displayed, bars will be horizontal rows, but when talking about it, I will picture them as vertical columns
+// I will also lose resolution when it is printed with ASCII, but can't do anything about that
 void run_stats::print_histogram(int numrows) {
 	// 1: find the borders between bars
 	int s = game_loss_histogram.size() - 1; // s=89
@@ -170,6 +182,9 @@ void run_stats::print_histogram(int numrows) {
 
 
 	// 2: make a new histogram and put the old histogram's contents into it
+	// when losing resolution horizontally (from 89 entries to 10), must interpolate to prevent spikes from forming
+	// if barwidth = 2.2, it could range from 7.9 to 10.1 (containing 8/9/10) and then from 10.1 to 12.3 (containing 11/12)
+	// to solve this, border zones must be split between the buckets they're going into
 	std::vector<float> new_histogram = std::vector<float>(numrows, 0);
 	int q = 0; // index of borders to be comparing against, and new_histogram bucket to put numbers into
 	for (int i = 1; i < game_loss_histogram.size(); i++) {
@@ -189,10 +204,9 @@ void run_stats::print_histogram(int numrows) {
 
 
 	// 3: actually display it
-	// some sort of auto-scaling? is max height 100% or the highest of the histogram entries? WHAT SIZE is max height?
-	// do I want to print it horizontal or vertical? VERY different formatting strategy
-	// probably want to put the actual value next to the bar (rounded down)... easy for rows, hard for columns
-	// decided: max size is 40 * '#' horizontal, for the biggest of the values
+	// uses HISTOGRAM_RESOLUTION horizontal bars, scaled so that the largest bar is HISTOGRAM_MAX_HORIZ_SIZE chars
+	// display actual number to the left
+	// doesn't have good vertical axis labels tho, and horizontal axis is relative.
 
 	// find max of the new histogram:
 	float z = 0;
@@ -200,21 +214,16 @@ void run_stats::print_histogram(int numrows) {
 		if (new_histogram[i] > z) z = new_histogram[i];
 	}
 
-	// HORIZONTAL DISPLAY:
-	//myprintfn(2, "Total number of in-progress losses: %i\n", games_lost - game_loss_histogram[0]);
-	myprintfn(2, "Distribution of when losses occur (in terms of game completion):\n");
-	myprintfn(2, "num games| 1%% of flags placed\n");
-	// for-loop
-	for (int i = 0; i < new_histogram.size(); i++) {
-		std::string row = std::string(int(float(HISTOGRAM_MAX_HORIZ_SIZE) * new_histogram[i] / z), '#');
-		myprintfn(2, "%7.0f  |%s\n", new_histogram[i], row.c_str());
+	if (z != 0) {
+		// HORIZONTAL DISPLAY:
+		myprintfn(2, "Distribution of when losses occur (in terms of game completion):\n");
+		myprintfn(2, " # games | 1%% of flags placed\n");
+		// for-loop
+		for (int i = 0; i < new_histogram.size(); i++) {
+			std::string row = std::string(int(float(HISTOGRAM_MAX_HORIZ_SIZE) * new_histogram[i] / z), '#');
+			myprintfn(2, "%7.0f  |%s\n", new_histogram[i], row.c_str());
+		}
+		myprintfn(2, "         | 99%% of flags placed\n\n");
 	}
-	myprintfn(2, "         | 99%% of flags placed\n\n");
 }
-
-
-
-
-
-
 

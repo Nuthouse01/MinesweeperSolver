@@ -24,20 +24,10 @@ MS_solver.cpp, MS_solver.h
 // TODO: re-test algorithm speed/accuracy with different chain recheck level values
 
 // possibly hard
-// TODO: multi-cell logic improvement: sometimes multiple MC rules can be seen from a single field-state, but if one is applied the other
-//		can't be found. But that doesn't mean they have contradictary results... IDEA: on MC loop, store the clears/flags found by the rules,
-//		but don't apply them until the end of iteration over the field. will have some (lots?) of redundancies, not sure if this will have
-//		significant impact on winrate or on speed. definitely would screw up stat-tracking and trans-map tho.
-// TODO: incorporate advanced version of NOV-flag into pod-optimization... not sure how, won't be 100%, but it may help some. running pair-wise
-//		NOV-flag at each stage may help some; running true multi-NOV-flag would be extremely hard to implement
 // TODO: let smartguess find and apply only the concrete parts of a potential solution within a chain? IDEA: apply any flags that are shared
 //		by ALL min or max solutions, when there are multiple min or max solutions?
 // TODO: maybe have smartguess give preference to cells nearer the border, as a tie-breaker? if the risk is the same, might as well
 //		go for something with a greater reward
-// TODO: smartguess pod optimization can sometimes find non-optimal solutions; different orders may lead to substantially different results,
-//		in terns of finding definite-flag or definite-clear cells. AFAIK there are no differences from order when definites cannot be 
-//		found. Might get some improvement by running all possible orders of pod comparisons, but hard to build, very long to execute,
-//		small benefit.
 
 // very minor or no benefits
 // TODO: change the logfile print method to instead use >> so if it unexpectedly dies I still have a partial logfile, and/or can read it
@@ -355,13 +345,13 @@ inline int play_game() {
 	 // reveal one cell (chosen at random or guaranteed to succeed)
 	if (!FIND_EARLY_ZEROS_var) {
 		// reveal a random cell (game loss is possible!)
+		mygamestats.luck_value_mult *= (1. - (float(myruninfo.NUM_MINES) / float(mygame.unklist.size())));
+		mygamestats.luck_value_sum += (1. - (float(myruninfo.NUM_MINES) / float(mygame.unklist.size())));
 		r = mygame.reveal(rand_from_list(&mygame.unklist));
-		if (r == -1) { // no need to log it, first-move loss when random-hunting is a handled situation
-			return 0;
-		}
+		if (r == -1) { return 0; } // no need to log it, first-move loss when random-hunting is a handled situation
 		// if going to use smartguess, just pretend that the first guess was a smartguess
-		if(RANDOM_USE_SMART_var) { mygamestats.trans_map = "^ "; }
-		else { mygamestats.trans_map = "r "; }
+		if(RANDOM_USE_SMART_var) { mygamestats.trans_map = "^ "; } else { mygamestats.trans_map = "r "; }
+		// accumulate into luck value
 	} else {
 		// reveal a cell from the zerolist... game loss probably not possible, but whatever
 		r = mygame.reveal(rand_from_list(&mygame.zerolist));
@@ -450,11 +440,11 @@ inline int play_game() {
 				if ((me->get_status() != VISIBLE) || (me->get_effective() == 0)) { continue; } // SKIP
 				
 				// strategy 3: 121-cross
-				r = strat_121_cross_IP(me, &mygamestats, &action);
+				r = strat_121_cross(me, &mygamestats, &action);
 				if (r == -1) { return -1; } // unexpected game loss, should be impossible!
 
 				// strategy 4: nonoverlap-flag
-				r = strat_nonoverlap_flag_IP(me, &mygamestats, &action);
+				r = strat_nonoverlap_flag(me, &mygamestats, &action);
 				if (r == 1) {// game won!
 					sprintf_s(buffer, "m%i ", (numactions + action));
 					mygamestats.trans_map += buffer;
@@ -462,7 +452,7 @@ inline int play_game() {
 				}
 
 				// strategy 5: nonoverlap-safe
-				r = strat_nonoverlap_safe_IP(me, &mygamestats, &action);
+				r = strat_nonoverlap_safe(me, &mygamestats, &action);
 				if (r == -1) { return -1; } // unexpected game loss, should be impossible!
 				
 				
@@ -549,7 +539,7 @@ inline int play_game() {
 
 
 
-			// actually guess, one of 3 paths...
+			// actually guess, one of 5 endpoints...
 			// To win when guessing, if every guess is successful, it will reveal information that the SC/MC
 			// logic will use to place the final flags. So, the only way to win is by revealing the right safe places.
 			if ((FIND_EARLY_ZEROS_var) && (mygame.zerolist.size()) && (mygamestats.began_solving == false)) {
@@ -562,6 +552,8 @@ inline int play_game() {
 				trans_map_char = 'z'; isaguess = true;
 			} else if(!RANDOM_USE_SMART_var) {
 				// option B: random-guess
+				mygamestats.luck_value_mult *= (1. - (float(mygame.get_mines_remaining()) / float(mygame.unklist.size())));
+				mygamestats.luck_value_sum += (1. - (float(mygame.get_mines_remaining()) / float(mygame.unklist.size())));
 				r = mygame.reveal(rand_from_list(&mygame.unklist));
 				if (r == -1) {
 					winorlose = 0; // normal loss
@@ -724,10 +716,10 @@ int main(int argc, char *argv[]) {
 		myrunstats.strat_121_total +=		mygamestats.strat_121;
 		myrunstats.strat_nov_flag_total +=	mygamestats.strat_nov_flag;
 		myrunstats.strat_nov_safe_total +=	mygamestats.strat_nov_safe;
-		myrunstats.num_guesses_total +=		mygamestats.num_guesses;
 		myrunstats.smartguess_attempts_total +=	mygamestats.smartguess_attempts;
 		myrunstats.smartguess_diff_total +=		mygamestats.smartguess_diff;
 		myrunstats.smartguess_valves_tripped_total += mygamestats.smartguess_valves_tripped;
+		myrunstats.total_luck_per_guess += mygamestats.luck_value_sum;
 
 		// increment run results depending on gamestate and gameresult
 		myrunstats.games_total++;
@@ -735,7 +727,9 @@ int main(int argc, char *argv[]) {
 			mygamestats.trans_map += "X";
 			myrunstats.games_lost++;
 			myrunstats.inc_histogram(myruninfo.NUM_MINES - mygame.get_mines_remaining());
-			// ... TODO
+			// ................................. unused
+			myrunstats.num_guesses_in_losses += mygamestats.num_guesses;
+			myrunstats.total_luck_in_losses += mygamestats.luck_value_mult;
 			if (mygamestats.began_solving == false) {
 				myrunstats.games_lost_beginning++;
 			}
@@ -747,10 +741,12 @@ int main(int argc, char *argv[]) {
 			} else {
 				myrunstats.games_lost_lategame++; // 85-100% completed
 			}
-			// ...
+			// .................................
 		} else if (r == 1) { // game win
 			mygamestats.trans_map += "W";
 			myrunstats.games_won++;
+			myrunstats.num_guesses_in_wins += mygamestats.num_guesses;
+			myrunstats.total_luck_in_wins += mygamestats.luck_value_mult;
 			if (mygamestats.num_guesses > 0) {
 				myrunstats.games_won_guessing++;
 			} else {

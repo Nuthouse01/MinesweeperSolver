@@ -18,8 +18,6 @@ runinfo::runinfo() {
 	SCREEN = 0;
 	FILE * logfile = NULL;
 }
-
-
 // constructor: with no args, don't do much
 game::game() {
 	mines_remaining = 0;
@@ -46,13 +44,9 @@ game::game(int xxx, int yyy) {
 		}
 	}
 }
-
 unsigned int game::get_mines_remaining() {
 	return mines_remaining;
 }
-
-
-
 cell::cell() { // constructor
 	x = 0;
 	y = 0;
@@ -366,15 +360,36 @@ void myprintfn(int p, const char* fmt, ...) {
 }
 
 
-
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
 inline int compare_two_cells(class cell * a, class cell * b) {
 	return ((b->y * myruninfo.SIZEX) + b->x) - ((a->y * myruninfo.SIZEX) + a->x);
 }
-
 // if a goes before b, return true... needed for consistient sorting
 inline bool sort_by_position(class cell * a, class cell * b) {
 	if (compare_two_cells(a, b) < 0) { return true; } else { return false; }
 }
 
 
+// extract_overlap: takes two vectors of cells, returns (first_vect_unique) (second_vect_unique) (overlap)
+// NOTE: i could templatize this function, but A) there's no need to, and B) I'd have to put it in the header
+std::vector<std::vector<class cell *>> extract_overlap(std::vector<class cell *> me_unk, std::vector<class cell *> other_unk) {
+	std::vector<class cell *> overlap = std::vector<class cell *>();
+	for (int i = 0; i < me_unk.size(); i++) { // for each cell in me_unk...
+		for (int j = 0; j < other_unk.size(); j++) { // ...compare against each cell in other_unk...
+			if (me_unk[i] == other_unk[j]) {// ...until there is a match!
+				overlap.push_back(me_unk[i]);
+				me_unk.erase(me_unk.begin() + i);
+				other_unk.erase(other_unk.begin() + j); // not sure if this makes it more or less efficient...
+				i--; // need to counteract the i++ that happens in outer loop
+				break; // cell at this position can only match once
+			}
+		}
+	}
+	std::vector<std::vector<class cell *>> retme;
+	retme.push_back(me_unk); retme.push_back(other_unk); retme.push_back(overlap);
+	return retme;
+}
+
+
+// NOTE: rand_from_list and rand_from_vect would go here, except that because they're templated functions,
+// they cannot have separate declaration and definition, so I put them in the header instead.
