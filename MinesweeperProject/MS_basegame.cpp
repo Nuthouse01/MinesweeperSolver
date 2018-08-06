@@ -392,5 +392,12 @@ std::vector<std::vector<class cell *>> extract_overlap(std::vector<class cell *>
 }
 
 
-// NOTE: rand_from_list and rand_from_vect would go here, except that because they're templated functions,
-// they cannot have separate declaration and definition, so I put them in the header instead.
+
+// return a random object from the provided list, or NULL if the list is empty
+struct cell * rand_from_list(std::list<cell *> * fromme) {
+	if (fromme->empty()) { return NULL; } // NOTE: bad if this is supposed to return an iterator!!
+	int f = rand() % fromme->size();
+	std::list<cell *>::iterator iter = fromme->begin();
+	for (int i = 0; i < f; i++) { iter++; } // iterate to this position
+	return *iter;
+}

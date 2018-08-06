@@ -106,29 +106,27 @@ v4.9: Logs go to LOGS folder, creates the folder if its not there already
 		Created 'stats' file
 		Slightly changed how some 'globals' are initialized
 		
-v4.10: Implemented game-loss histogram! Still need to clean up stats as a result of this
-		Cleaned up #includes, reduced to only what's necessary where its necessary
-		Made single-cell logic into a function, created new convention/standard for the logic/rule functions
-		Refined the multi-cell logic, turns out 'queueing' strategy doesn't offer significant improvement
-		Moved rand_from_list to basegame, split into list/vector versions and templatized 
-		Split "advanced solving/chain optimization" into its own function, returns chain and handles cells internally if needed
-		Smartguess accumulates stats into game_stats, so nothing changes run_stats until the end-of-game
+v4.10: Implemented game-loss histogram! Hid redundant stats as a result (still calculated, not displayed)
+		CLEANUP: Reduced #includes to only what's necessary where its necessary
+		CLEANUP: Made single-cell logic into a function, created new convention/standard for the logic/rule functions
+		CLEANUP: Refined the multi-cell logic functions, fits the new convention
+		Implemented 'queueing' strategy, determined it doesn't offer any improvement, and reverted to in-place strategy
+		CLEANUP: Moved rand_from_list to basegame, wanted to templatize but turns out I don't need to
+		CLEANUP: Renamed find_nonoverlap to extract_overlap and moved to basegame
+		CLEANUP: Smartguess accumulates stats into game_stats, so nothing changes run_stats until the end-of-game
+		CLEANUP: Split "advanced solving/chain optimization" into its own function, returns chain and handles cells internally if needed
 		Added 2-way NOV-flag, and 3-way NOV-flag and NOV-safe to the "chain optimization" stage
 			Winrate, solve time, and recursion overflows are all utterly unchanged :(
 			Turns out that 121 logic can't be safely applied to the chain
-		Renamed find_nonoverlap to extract_overlap and moved to basegame
 		Implemented a 'luck/safety' tracker, display average safety of each guess (including initial)
 			Massive disparity between actual winrate vs winrate derived from avg luck per guess and avg # guesses...
 			Probably due to smartguess not calculating risks perfectly? Might be resolved if 'perfect' mode is implemented
-		Made a little bit of 'runinfo' private
+		Made a little bit of 'runinfo' private, added setting/access functions
 		
 		
 		
 TODO:
 *rename "multi-cell logic" to "bi-cell logic" and rename the advanced solving to "multi-cell logic"?
-*break "smartguess" into multiple smaller functions??? unsure
-
-*from guessing function, return 'risk/safety/luck' value along with chosen cell; accumulate as game goes on, print in gamestats
 
 *re-test and probably eliminate "chain recheck depth" feature
 
@@ -167,7 +165,7 @@ TODO:
 			also store status of each cell in aggregate, clear/flag
 			find interior_cell risk same as smartguess, if there is any interior_cell
 		know border_cell risk from recursion statistics
-		guess, might find definite clear/flag cells (not caught in optimization stage)
-		
+		might find definite clear/flag cells (not caught in optimization stage)
+		if not, guess
 		
 		

@@ -62,7 +62,7 @@ public:
 	std::vector<std::vector<class cell>> field_blank;
 
 	int init(int x, int y); // sets up field_blank
-	unsigned int inline get_mines_remaining() { return mines_remaining; }
+	inline unsigned int get_mines_remaining() { return mines_remaining; }
 	class cell * cellptr(int xxx, int yyy);
 	std::vector<class cell *> get_adjacent(class cell * me);
 	std::vector<class cell *> filter_adjacent(class cell * me, cell_state target);
@@ -107,10 +107,12 @@ void myprintfn(int p, const char* fmt, ...);
 inline bool sort_by_position(class cell * a, class cell * b);
 inline int compare_two_cells(class cell * a, class cell * b);
 std::vector<std::vector<class cell *>> extract_overlap(std::vector<class cell *> me_unk, std::vector<class cell *> other_unk);
+struct cell * rand_from_list(std::list<cell *> * fromme);
 
 
-
-// NOTE: MUST BE HERE IN THE HEADER, templates can't have separate declarations/definitions
+/* currently unused
+// NOTE: IF TEMPLATIZED, THE FULL FUNCTION MUST BE HERE IN THE HEADER, templates can't have separate declarations/definitions
+// but, i don't have any need to templatize these functions, even though its a type-non-specific operation
 // return a random object from the provided list, or NULL if the list is empty
 template <class foobar> foobar rand_from_list(std::list<foobar> * fromme) {
 	if (fromme->empty()) { return NULL; } // NOTE: bad if this is supposed to return an iterator!!
@@ -119,7 +121,7 @@ template <class foobar> foobar rand_from_list(std::list<foobar> * fromme) {
 	for (int i = 0; i < f; i++) { iter++; } // iterate to this position
 	return *iter;
 }
-/* currently unused
+
 template <class ttttt> ttttt rand_from_vect(std::vector<ttttt> * fromme) {
 	if (fromme->empty()) { return NULL; }
 	int f = rand() % fromme->size();

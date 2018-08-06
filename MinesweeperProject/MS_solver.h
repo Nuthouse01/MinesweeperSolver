@@ -110,7 +110,7 @@ struct chain {
 
 	std::list<struct pod>::iterator root_to_pod(class cell * linked_root);
 	std::list<struct pod>::iterator int_to_pod(int f);
-	std::vector<std::list<struct pod>::iterator> get_5x5_around(std::list<struct pod>::iterator center);
+	std::vector<std::list<struct pod>::iterator> get_5x5_around(std::list<struct pod>::iterator center, bool include_corners);
 	std::vector<struct chain> sort_into_chains(int r, bool reduce);
 	int identify_chains();
 private:

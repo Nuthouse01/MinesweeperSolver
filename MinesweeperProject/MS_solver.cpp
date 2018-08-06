@@ -321,11 +321,12 @@ std::list<struct pod>::iterator chain::int_to_pod(int f) {
 	return iter;
 }
 
-// returns a VECTOR of POD-LIST ITERATORS to the pods in the podlist that are within 5x5 minus corners of the given pod
-std::vector<std::list<struct pod>::iterator> chain::get_5x5_around(std::list<struct pod>::iterator center) {
+// returns a VECTOR of POD-LIST ITERATORS to the pods in the podlist that are within 5x5 of the given pod
+// if include_corners=false, also ignore the corners of the 5x5
+std::vector<std::list<struct pod>::iterator> chain::get_5x5_around(std::list<struct pod>::iterator center, bool include_corners) {
 	std::vector<std::list<struct pod>::iterator> retme;
 	for (int b = -2; b < 3; b++) { for (int a = -2; a < 3; a++) { // iterate over 5x5
-		if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
+		if ((!include_corners && ((a == -2 || a == 2) && (b == -2 || b == 2))) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
 		class cell * other = mygame.cellptr(center->root->x + a, center->root->y + b);
 		if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; } // if the cell doesn't exist or isn't VISIBLE, then skip
 		std::list<struct pod>::iterator otherpod = this->root_to_pod(other);// find the pod in the chain with this cell as root!
@@ -599,7 +600,6 @@ inline int factorial(int x) {
 // also apply "advanced" versions of nonoverlap-safe and nonoverlap-flag; partial matches and chaining logic rules together
 // may identify some cells as "definite safe" or "definite mine", and will reveal/flag them internally
 // if no cells are flagged/cleared, will output the master chain thru input arg for passing to full recursive function below
-// TODO: consider rolling steps 4?/5/6 into this as well?
 // return: 1=win/-1=loss/0=continue (winning is rare but theoretically possible, but cannot lose unless something is seriously out of whack)
 int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 	static class cell dummycell; // cell w/ value 0
@@ -647,7 +647,7 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 		changes = false;
 		// implement my own post-loop increment instead of doing it in the for-loop header
 		for (std::list<struct pod>::iterator podit = buildme->podlist.begin(); podit != buildme->podlist.end(); ) {
-			std::vector<std::list<struct pod>::iterator> around = buildme->get_5x5_around(podit);
+			std::vector<std::list<struct pod>::iterator> around = buildme->get_5x5_around(podit, false);
 			for (int b = 0; b < around.size(); b++) {
 				std::list<struct pod>::iterator otherpod = around[b]; // for each pod 'otherpod' with root within 5x5 found...
 
@@ -805,21 +805,16 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 
 	float interior_risk = 150.;
 	if (!interior_list.empty() || (mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN)) {
+
 		// step 5: iterate again, building links to anything within 5x5(only set MY links)
 		for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
-			for (int b = -2; b < 3; b++) {
-				for (int a = -2; a < 3; a++) {
-					if (a == 0 && b == 0) { continue; } // skip myself BUT INCLUDE THE CORNERS
-					class cell * other = mygame.cellptr(podit->root->x + a, podit->root->y + b);
-					if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; } // only examine the visible cells
-					std::list<struct pod>::iterator otherpod = master_chain->root_to_pod(other);
-					if (otherpod == master_chain->podlist.end()) { continue; } // some pods will have been optimized away
-																			  // for each pod 'otherpod' with root within 5x5 found...
-					std::vector<std::vector<class cell *>> n = extract_overlap(podit->cell_list, otherpod->cell_list);
-					// ... only create links within podit!
-					for (int i = 0; i < n[2].size(); i++) {
-						podit->add_link(n[2][i], otherpod->root);
-					}
+			std::vector<std::list<struct pod>::iterator> around = master_chain->get_5x5_around(podit, true); // INCLUDE THE CORNERS
+			for (int i = 0; i < around.size(); i++) {
+				// for each pod 'otherpod' with root within 5x5 found...
+				std::vector<std::vector<class cell *>> n = extract_overlap(podit->cell_list, around[i]->cell_list);
+				// ... only create links within podit!
+				for (int i = 0; i < n[2].size(); i++) {
+					podit->add_link(n[2][i], around[i]->root);
 				}
 			}
 		}
@@ -836,7 +831,7 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, # primary chains = %i \n", listofchains.size());
 		float border_allocation = 0;
 		std::vector<struct podwise_return> retholder = std::vector<struct podwise_return>(numchains, podwise_return());
-		for (int s = 0; s < numchains; s++) {
+		for (int s = 0; s < listofchains.size(); s++) {
 			recursion_safety_valve = false; // reset the flag for each chain
 			struct podwise_return asdf = podwise_recurse(0, listofchains[s]);
 			border_allocation += asdf.avg();
@@ -848,9 +843,16 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 
 
 		// step 8: if near the endgame, check if any solutions fit perfectly
+		// ENDSOLVER (conditions in which this runs need reconsideration)
+		// currently runs just if there are not many mines remaining, consider running if there are not many interior-list cells remaining??
+		// problem: each chain is solved independently, without regard for the total # of mines remaining to be placed
+		// solution: see if it solves the puzzle to flag each interior mine + flag max possible in each chain
+		// solution: see if it solves the puzzle to clear each interior mine + flag fewest posible in each chain
+		// solution: if there are 0? interior-list cells remaining, see if there are any allocations that produce an invalid total 
+		//			no matter what chains they are matched with?
 		if (mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) {
 			float minsum = 0; float maxsum = 0;
-			for (int a = 0; a < numchains; a++) { minsum += retholder[a].min_val(); maxsum += retholder[a].max_val(); }
+			for (int a = 0; a < retholder.size(); a++) { minsum += retholder[a].min_val(); maxsum += retholder[a].max_val(); }
 
 			if (minsum == mygame.get_mines_remaining()) {
 				// int_list is safe
