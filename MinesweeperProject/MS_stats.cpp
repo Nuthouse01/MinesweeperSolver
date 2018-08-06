@@ -111,7 +111,6 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 	myprintfn(2, "Average safety per guess:                  %7.3f%%\n", 100. * (float(total_luck_per_guess) / float(games_total + num_guesses_in_losses + num_guesses_in_wins))); // everything
 	//myprintfn(2, "Avg luck/safety value in each win:         %7.3f%%\n", 100. * (float(total_luck_in_wins) / float(games_won)));
 
-	// TODO: add 'avg risk/safety for each guess' ?
 	// (1. - (float(runinfoptr->get_NUM_MINES()) / float(runinfoptr->get_SIZEX() * runinfoptr->get_SIZEY())));
 	// average luck per guess:
 	// (sum of luck from all guesses) / (num guesses in wins + num guesses in losses)

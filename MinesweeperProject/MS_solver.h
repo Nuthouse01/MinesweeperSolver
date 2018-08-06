@@ -172,20 +172,6 @@ struct scenario {
 	int allocs; // how many possible allocations this scenario stands in for
 };
 
-// TODO
-// returned by smartguess function, pending restructuring of smartguess
-struct smartguess_return {
-	smartguess_return() {};
-	int method; // 0=optimization, 1=guess, 2=solve
-	std::vector<class cell *> clearme;
-	std::vector<class cell *> flagme;
-
-	bool empty() { return clearme.empty() && flagme.empty(); }
-	int size() { return clearme.size() + flagme.size(); }
-};
-
-
-
 
 
 

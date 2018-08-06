@@ -790,7 +790,6 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		myriskholder = riskholder(myruninfo.get_SIZEX(), myruninfo.get_SIZEY());
 	}
 
-	struct smartguess_return results;
 	std::list<class cell *> interior_list = mygame.unklist;
 
 
