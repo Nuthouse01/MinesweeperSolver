@@ -779,17 +779,19 @@ int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * things
 
 
 
-// laboriously determine the % risk of each unknown cell and choose the one with the lowest risk to return
-// can completely solve the puzzle, too; therefore it can return multiple cells to clear or to flag
-struct smartguess_return smartguess(struct chain * master_chain, struct game_stats * gstats) {
-	struct smartguess_return results;
-	std::list<class cell *> interior_list = mygame.unklist;
-
-
+// laboriously determine the % risk of each unknown cell and choose the one with the lowest risk to reveal
+// can completely solve the puzzle, too; if it does, it clears/flags everything it knows for certain
+// doesn't return cells, instead clears/flags them internally
+// needs to somehow pass out info about whether it guessed or tried to solve a chain, and how many
+// return: 1=win/-1=loss/0=continue (winning is unlikely but possible)
+int smartguess(struct chain * master_chain, struct game_stats * gstats, int * thingsdone) {
 	static struct riskholder myriskholder;
 	if (myriskholder.riskarray.empty()) { // because it's static, init it like this only once
 		myriskholder = riskholder(myruninfo.get_SIZEX(), myruninfo.get_SIZEY());
 	}
+
+	struct smartguess_return results;
+	std::list<class cell *> interior_list = mygame.unklist;
 
 
 
@@ -853,30 +855,45 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 		if (mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) {
 			float minsum = 0; float maxsum = 0;
 			for (int a = 0; a < retholder.size(); a++) { minsum += retholder[a].min_val(); maxsum += retholder[a].max_val(); }
-
-			if (minsum == mygame.get_mines_remaining()) {
-				// int_list is safe
-				results.clearme.insert(results.clearme.end(), interior_list.begin(), interior_list.end());
+			int retval = 0; // win/loss/continue return value
+			if (minsum == mygame.get_mines_remaining()) { // int_list is safe
+				for (std::list<class cell *>::iterator iiter = interior_list.begin(); iiter != interior_list.end(); iiter++) {
+					*thingsdone += 1;
+					if (mygame.reveal(*iiter) == -1) {
+						myprintfn(2, "ERR: Unexpected loss during smartguess chain-solve, must investigate!!\n"); assert(0);
+						return -2;
+					}
+				}
 				// for each chain, get the minimum solution object (if there is only one), and if it has only 1 allocation, then apply it as flags
 				for (int a = 0; a < numchains; a++) {
 					struct solutionobj * minsol = retholder[a].prmin();
-					if (minsol != NULL)
-						results.flagme.insert(results.flagme.end(), minsol->solution_flag.begin(), minsol->solution_flag.end());
+					if (minsol != NULL) {
+						for (std::list<class cell *>::iterator soliter = minsol->solution_flag.begin(); soliter != minsol->solution_flag.end(); soliter++) {
+							*thingsdone += 1;
+							if (mygame.set_flag(*soliter) == 1) { retval = 1; }
+						}
+					}
 				}
-			} else if ((maxsum + interior_list.size()) == mygame.get_mines_remaining()) {
-				// int_list is all mines
-				results.flagme.insert(results.flagme.end(), interior_list.begin(), interior_list.end());
+			} else if ((maxsum + interior_list.size()) == mygame.get_mines_remaining()) { // int_list is all mines
+				for (std::list<class cell *>::iterator iiter = interior_list.begin(); iiter != interior_list.end(); iiter++) {
+					*thingsdone += 1;
+					if (mygame.set_flag(*iiter) == 1) { retval = 1; }
+				}
+
 				// for each chain, get the maximum solution object (if there is only one), and if it has only 1 allocation, then apply it
 				for (int a = 0; a < numchains; a++) {
 					struct solutionobj * maxsol = retholder[a].prmax();
-					if (maxsol != NULL)
-						results.flagme.insert(results.flagme.end(), maxsol->solution_flag.begin(), maxsol->solution_flag.end());
+					if (maxsol != NULL) {
+						for (std::list<class cell *>::iterator soliter = maxsol->solution_flag.begin(); soliter != maxsol->solution_flag.end(); soliter++) {
+							*thingsdone += 1;
+							if (mygame.set_flag(*soliter) == 1) { retval = 1; }
+						}
+					}
 				}
 			}
-			if (!results.empty()) {
-				if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, found a definite solution!\n");
-				results.method = 2;
-				return results;
+			if (*thingsdone) {
+				if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, solved some chains!!\n");
+				return retval;
 			}
 		}
 
@@ -885,9 +902,9 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 		// step 9: calculate interior_risk, do statistics things
 
 		// calculate the risk of a mine in any 'interior' cell (they're all the same)
-		if (interior_list.empty())
+		if (interior_list.empty()) {
 			interior_risk = 150.;
-		else {
+		} else {
 
 			////////////////////////////////////////////////////////////////////////
 			// DEBUG/STATISTICS STUFF
@@ -941,18 +958,21 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 		// interior is safer
 		gstats->luck_value_mult *= (1. - (interior_risk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
 		gstats->luck_value_sum += (1. - (interior_risk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
-		results.clearme.push_back(rand_from_list(&interior_list));
-		results.method = 1;
+		//results.clearme.push_back(rand_from_list(&interior_list));
+		//results.method = 1;
+		// in smartguess, i don't care about how many cells are uncovered from one guess, just if it is loss or continue
+		int r = mygame.reveal(rand_from_list(&interior_list));
+		return ((r==-1) ? -1 : 0); // if -1, return -1; otherwise, return 0
 	} else {
 		// border is safer, or they are tied
 		gstats->luck_value_mult *= (1. - (myriskreturn.minrisk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
 		gstats->luck_value_sum += (1. - (myriskreturn.minrisk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
-		results.clearme.push_back(rand_from_list(&myriskreturn.minlist));
-		results.method = 1;
+		//results.clearme.push_back(rand_from_list(&myriskreturn.minlist));
+		//results.method = 1;
+		int r = mygame.reveal(rand_from_list(&myriskreturn.minlist));
+		return ((r == -1) ? -1 : 0); // if -1, return -1; otherwise, return 0
 	}
-
-	return results;
-
+	return 0; // this should be impossible to hit
 }
 
 
@@ -1231,8 +1251,7 @@ int strat_121_cross(class cell * center, struct game_stats * gstats, int * thing
 		r = mygame.reveal(down);
 		s = mygame.reveal(up);
 		if ((r == -1) || (s == -1)) {
-			myprintfn(2, "ERR: Unexpected loss during MC 121-cross, must investigate!!\n");
-			assert(0);
+			myprintfn(2, "ERR: Unexpected loss during MC 121-cross, must investigate!!\n"); assert(0);
 			return -1;
 		} else {
 			gstats->strat_121 += (r != 0 || s != 0);
@@ -1247,8 +1266,7 @@ int strat_121_cross(class cell * center, struct game_stats * gstats, int * thing
 		r = mygame.reveal(right);
 		s = mygame.reveal(left);
 		if ((r == -1) || (s == -1)) {
-			myprintfn(2, "ERR: Unexpected loss during MC 121-cross, must investigate!!\n");
-			assert(0);
+			myprintfn(2, "ERR: Unexpected loss during MC 121-cross, must investigate!!\n"); assert(0);
 			return -1;
 		} else {
 			gstats->strat_121 += (r != 0 || s != 0);
@@ -1328,8 +1346,7 @@ int strat_nonoverlap_safe(class cell * center, struct game_stats * gstats, int *
 			for (int i = 0; i < nonoverlap[1].size(); i++) {
 				int r = mygame.reveal(nonoverlap[1][i]);
 				if (r == -1) {
-					myprintfn(2, "ERR: Unexpected loss during MC nonoverlap-safe, must investigate!!\n");
-					assert(0);
+					myprintfn(2, "ERR: Unexpected loss during MC nonoverlap-safe, must investigate!!\n"); assert(0);
 					return -1;
 				}
 				retme_sub += r;

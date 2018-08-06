@@ -124,7 +124,7 @@ v4.10: Implemented game-loss histogram! Hid redundant stats as a result (still c
 		Made a little bit of 'runinfo' private, added setting/access functions
 		Renamed 'multi-cell logic' to 'two-cell logic' and renamed the chain build/optimize to 'multi-cell logic'
 			TODO: probably have to make even more changes in readme.txt
-		
+		CLEANUP: moved the flagging/clearing bit inside the smartguess function
 		
 		
 TODO:

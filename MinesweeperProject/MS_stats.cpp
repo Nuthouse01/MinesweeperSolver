@@ -126,8 +126,8 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 	myprintfn(2, "        Games won without guessing:      %5i   %5.1f%%   %5.1f%%\n", games_won_noguessing, (100. * float(games_won_noguessing) / float(games_total)), (100. * float(games_won_noguessing) / float(games_won)));
 	myprintfn(2, "        Games won that required guessing:%5i   %5.1f%%   %5.1f%%\n", games_won_guessing, (100. * float(games_won_guessing) / float(games_total)), (100. * float(games_won_guessing) / float(games_won)));
 	myprintfn(2, "    Total games lost:                    %5i   %5.1f%%    -----\n", games_lost, (100. * float(games_lost) / float(games_total)));
-	myprintfn(2, "        Games lost before 1rst flag(<1%%):%5i   %5.1f%%   %5.1f%%\n", game_loss_histogram[0], (100. * float(game_loss_histogram[0]) / float(games_total)), (100. * float(game_loss_histogram[0]) / float(games_lost)));
-	myprintfn(2, "        Games lost while solving(1-99%%): %5i   %5.1f%%   %5.1f%%\n", games_lost - game_loss_histogram[0], (100. * float(games_lost - game_loss_histogram[0]) / float(games_total)), (100. * float(games_lost - game_loss_histogram[0]) / float(games_lost)));
+	myprintfn(2, "        Games lost before 1st flag (<1%%):%5i   %5.1f%%   %5.1f%%\n", game_loss_histogram[0], (100. * float(game_loss_histogram[0]) / float(games_total)), (100. * float(game_loss_histogram[0]) / float(games_lost)));
+	myprintfn(2, "        Games lost while solving (1-99%%):%5i   %5.1f%%   %5.1f%%\n", games_lost - game_loss_histogram[0], (100. * float(games_lost - game_loss_histogram[0]) / float(games_total)), (100. * float(games_lost - game_loss_histogram[0]) / float(games_lost)));
 	// since I have the histogram I don't need to break it down further than "in the histogram vs not"
 	if (games_lost_unexpectedly != 0) {
 	myprintfn(2, "        Games lost unexpectedly:         %5i   %5.1f%%   %5.1f%%\n", games_lost_unexpectedly, (100. * float(games_lost_unexpectedly) / float(games_total)), (100. * float(games_lost_unexpectedly) / float(games_lost)));
@@ -148,7 +148,8 @@ void game_stats::print_gamestats(int screen, class game * gameptr, class runinfo
 		strat_121, strat_nov_safe, strat_nov_flag);
 	myprintfn(screen, "Cells guessed: %i\n", num_guesses);
 	myprintfn(screen, "Chance of safely getting this far: %.4f%%\n", 100. * luck_value_mult);
-	myprintfn(screen, "Flags placed: %i / %i\n\n\n", runinfoptr->get_NUM_MINES() - gameptr->get_mines_remaining(), runinfoptr->get_NUM_MINES());
+	float p = 100. * float(runinfoptr->get_NUM_MINES() - gameptr->get_mines_remaining()) / float(runinfoptr->get_NUM_MINES());
+	myprintfn(screen, "Flags placed: {%.1f%%}, %i / %i\n\n\n", p, runinfoptr->get_NUM_MINES() - gameptr->get_mines_remaining(), runinfoptr->get_NUM_MINES());
 	fflush(runinfoptr->logfile);
 }
 

@@ -207,7 +207,7 @@ inline int factorial(int x);
 
 // functions for the recursive smartguess method(s)
 int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * thingsdone);
-struct smartguess_return smartguess(struct chain * master_chain, struct game_stats * gstats);
+int smartguess(struct chain * master_chain, struct game_stats * gstats, int * thingsdone);
 struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain);
 
 

@@ -146,15 +146,11 @@ int game::reveal(class cell * revealme) {
 // flag: sets as flagged, reduces # remaining mines, reduce "effective" values of everything visible around it
 // return 1=win, 0=continue. if not an actual mine, dump error messages and try to abort
 int game::set_flag(class cell * flagme) {
-	if (flagme->status != UNKNOWN) {
-		return 0;
-	}
+	if (flagme->status != UNKNOWN) { return 0; }
 
 	// check if it flagged a non-mine square, and if so, why?
 	if (flagme->value != MINE) {
-		myprintfn(2, "ERR: FLAGGED A NON-MINE CELL\n");
-		assert(flagme->value == MINE);
-		system("pause");
+		myprintfn(2, "ERR: FLAGGED A NON-MINE CELL\n"); assert(0); system("pause");
 	}
 
 	unklist.remove(flagme);
@@ -169,7 +165,9 @@ int game::set_flag(class cell * flagme) {
 
 	// decrement the remaining mines
 	mines_remaining -= 1;
-	if (mines_remaining == 0) {
+	if (mines_remaining < 0) {
+		myprintfn(2, "ERR: PLACED TOO MANY FLAGS\n"); assert(0); system("pause");
+	} else if (mines_remaining == 0) {
 		//try to validate the win: every mine is flagged, and every not-mine is not-flagged
 		for (int y = 0; y < myruninfo.get_SIZEY(); y++) {
 			for (int x = 0; x < myruninfo.get_SIZEX(); x++) { // iterate over each cell
@@ -394,7 +392,7 @@ std::vector<std::vector<class cell *>> extract_overlap(std::vector<class cell *>
 
 
 // return a random object from the provided list, or NULL if the list is empty
-struct cell * rand_from_list(std::list<cell *> * fromme) {
+class cell * rand_from_list(std::list<cell *> * fromme) {
 	if (fromme->empty()) { return NULL; } // NOTE: bad if this is supposed to return an iterator!!
 	int f = rand() % fromme->size();
 	std::list<cell *>::iterator iter = fromme->begin();

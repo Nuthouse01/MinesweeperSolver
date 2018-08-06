@@ -505,7 +505,7 @@ inline int play_game() {
 		if (numactions != 0) {
 			// if something changed, don't do guessing, instead go back to singlecell
 			consecutiveguesses = 0;
-			sprintf_s(buffer, "b%i ", numactions);// add entry to transition map, use 'numactions'
+			sprintf_s(buffer, "t%i ", numactions);// add entry to transition map, use 'numactions'
 			mygamestats.trans_map += buffer;
 			mygamestats.print_gamestats(myruninfo.SCREEN, &mygame, &myruninfo); // post-two-cell print
 
@@ -573,31 +573,17 @@ inline int play_game() {
 
 				struct chain fullchain = chain();
 				r = strat_multicell_logic_and_chain_builder(&fullchain, &trans_map_val);
-				if (r != 0) { return r; }	// if win, return; if lose, return as unexpeced loss
+				if (r != 0) { winorlose = r; }	// if win, return 1; if lose, return as unexpeced loss -1; in either case, trans_map_val should be nonzero
 				if (trans_map_val != 0) {	// if something was flagged/cleared, 
-					consecutiveguesses = 0; trans_map_char = 'M';
+					trans_map_char = 'M';
 				} else {					// if nothing was flagged/cleared, continue with smartguess
-					struct smartguess_return rx = smartguess(&fullchain, &mygamestats);
-
-					// TODO: make it clear the cells internally!!! eliminate the 'return the cells' convention!!
-					for (int i = 0; i < rx.flagme.size(); i++) { // flag-list (uncommon but possible)
-						r = mygame.set_flag(rx.flagme[i]);
-						if (r == 1) {
-							// fall thru, re-use the stat tracking code and return there
-							winorlose = 1; break;
-						}
-					}
-					for (int i = 0; i < rx.clearme.size(); i++) { // clear-list
-						r = mygame.reveal(rx.clearme[i]);
-						if (r == -1) {
-							winorlose = 0; break;
-						}
-					}
-					
-					if (rx.method == 1) { // if it was a guess,
-						isaguess = true; trans_map_char = '^';
-					} else if (rx.method == 2) { // if it was the chain-solver mode,
-						consecutiveguesses = 0; trans_map_char = 'A'; trans_map_val = rx.size();
+					r = smartguess(&fullchain, &mygamestats, &trans_map_val);
+					// if win, return 1; if lose, return as EXPECTED loss 0 or unexpected loss -1
+					if (r == 1) { winorlose = 1; } else if (r < 0) { winorlose = r + 1; }
+					if (trans_map_val == 0) { // if it was a guess,
+						trans_map_char = '^'; isaguess = true;
+					} else { // if it was the chain-solver mode,
+						trans_map_char = 'A';
 					}
 				}				
 			}
@@ -610,6 +596,8 @@ inline int play_game() {
 					int m = (std::to_string(consecutiveguesses - 1)).size() + 2; // almost always going to be 3 or 4
 					mygamestats.trans_map.erase(mygamestats.trans_map.size() - m, m);
 				}
+			} else {
+				consecutiveguesses = 0;
 			}
 			sprintf_s(buffer, "%c%i ", trans_map_char, trans_map_val);
 			mygamestats.trans_map += buffer;
