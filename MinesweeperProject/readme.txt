@@ -63,6 +63,7 @@ Note that the speed drops drastically when the program is printing each stage to
 
 /////////////////////////////////////////////////////////////////////////
 "Transition map" key
+TODO: update this!!
 
 The transition map is a string built as the algorithm is running. It indicates
 the order in which the solver stages were used, and how much was done in each stage.
@@ -70,19 +71,19 @@ the order in which the solver stages were used, and how much was done in each st
 The game always begins with at least 1 guess (either r# or z# or ^#), this IS included in the string,
 but not in other places that count guesses.
 
-s# and m# represent the *total number of cells* cleared/flagged in those stages... all other keys
+s# and t# represent the *total number of cells* cleared/flagged in those stages... all other keys
 represent the *number of actions* taken, if it clears a zero and reveals more than 1 cell, 
 its NOT reflected there.
 
 X		game lost after preceeding action(X is shown on the field printout where it uncovered a mine)
 W		game won after preceeding action
 s#		number of cells flagged/revealed in single-cell logic
-m#		number of cells flagged/revealed in multi-cell logic
+t#		number of cells flagged/revealed in two-cell logic
 r#		number of consecutive random guesses made
 z#		number of consecutive "cheaty" zero-guesses made, only until solver can solve something
 ^#		number of consecutive smart-guesses made
-O#		number of cells smartguess algorithm found to be guaranteed clear/flag during chain optimization
-		(this uses an improved version of multi-cell logic)
+M#		number of cells flagged/revealed in multi-cell logic when optimizing the chain before
+			a smartguess (this uses an improved version of two-cell logic)
 A#		number of cells smartguess alg found to be a perfect solution to one of the chains (explained
 		somewhere below, its kinda complicated)
 
@@ -112,15 +113,15 @@ Explanation of solver logic (toplevel architecture)
 
 There are 3 "major stages" or "logic categories" for solving a minesweeper game: 
 1) single-cell logic
-2) multi-cell or overlap logic
+2) two-cell or overlap logic
 3) guessing
 
 My solver has very simple top-level architecture: obviously, an initial blind guess must be 
 made to start the game. From there it proceeds as follows:
 First, apply single-cell logic rules until exhausted. It's possible that no logic can be 
   applied at all, but the solver proceeds the same whether or not it does.
-Then, apply multi-cell logic rules until exhausted. If ANY multi-cell logic is applied, 
-  loop back and try single-cell again; if NO multi-cell logic is applied, then fall through.
+Then, apply two-cell logic rules until exhausted. If ANY two-cell logic is applied, 
+  loop back and try single-cell again; if NO two-cell logic is applied, then fall through.
 Lastly, guess an uncertain cell to reveal. If using smart-guess, it may instead determine 
   that some cells are definitely-safe or definitely-flag. In either case, do this once, then
   loop back and try single-cell again.
@@ -139,7 +140,7 @@ access functions, but just trust me, it doesn't cheat.
 Explanation of solver logic (The Five Rules)
 
 The solver uses 5 logical rules to determine whether cells are mines or not. 2 are in single-
-cell logic, and 3 are in multi-cell logic. First, I have to explain the idea of "effective value":
+cell logic, and 3 are in two-cell logic. First, I have to explain the idea of "effective value":
 a cell's effective value equals its adjacency # minus how many flags are already adjacent to it.
 This is a very useful shorthand.
 
@@ -160,7 +161,7 @@ You shouldn't need a graphic to understand this rule... if there are 0 mines in 
 You shouldn't need a graphic to understand this rule... if there are 3 mines in 3 cells, then all 3 are mines.
 
 
-3) multi-cell: nonoverlap-flag
+3) two-cell: nonoverlap-flag
 If two cells have effective values X and X+1, and all unknowns around X+1 (except for ONE) overlap with 
 unknowns around X, that non-overlap cell must be a mine. Expanding to the general case, if two cells are 
 have effective values X and X+Z, and X+Z has exactly Z nonoverlapping unknown cells, then all those cells 
@@ -179,7 +180,7 @@ Examples:
 +++++++++++
 
 
-4) multi-cell: nonoverlap-safe
+4) two-cell: nonoverlap-safe
 If the adj unknowns of an X-effective cell are a pure subset of the adj unknowns of another cell with 
 the same effective value, then the non-overlap section can be safely revealed!
 
@@ -196,7 +197,7 @@ Examples:
 +++++++++++
 
 
-5) multi-cell: 121-cross
+5) two-cell: 121-cross
 If three cells are in a horiz or vert line, with the effective values 1 then 2 then 1, I know the two
 cells that would make it form a + are safe. This isn't logic so much as a pattern I noticed while
 playing... I suppose that, out of all possible ways to place mines around a 121 line, any allocation that
@@ -236,7 +237,7 @@ A "link" is an unknown cell shared by 2 or more pods, and contains a reference t
 A "chain" is a sequence of overlapping/linked pods; each chain can be solved independently.
 
 The optimization stage may conclude that some of the cells are definitely mines or definitely safe,
-before even doing the recursion. If so, just return with those and see if single-cell or multi-cell
+before even doing the recursion. If so, just return with those and see if single-cell or two-cell
 can take over from there.
 
 When below a certain threshold of mines remaining, the recursive alg also returns the actual 

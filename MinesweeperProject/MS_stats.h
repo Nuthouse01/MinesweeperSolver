@@ -26,7 +26,7 @@ struct game_stats {
 	int strat_121, strat_nov_safe, strat_nov_flag; // number of times each MC strategy was used
 	int num_guesses; // number of times it needed to do any type of guessing
 	//records the phase transition history of solving the game, and the # of operations done in each phase
-	// s#=single-cell, m#=multi-cell, O#=pre-smartguess optimization, W=win, X=lose, 
+	// s#=single-cell, t#=two-cell, M#=pre-smartguess multicell logic, W=win, X=lose, 
 	// ^#=smartguess, r#=randomguess, z#=zeroguess, A#=chain-solver
 	std::string trans_map;
 	bool began_solving; // did I begin solving things, or did I lose before anything could be done?

@@ -108,7 +108,7 @@ const char helptext[1700] = "MinesweeperSolver v3.0 by Brian Henson\n\
 This program is intended to generate and play a large number of Minesweeper\n\
 games to collect win/loss info or whatever other data I feel like. It applies\n\
 single-cell and multi-cell logical strategies as much as possible before\n\
-revealing any unknown cells,of course. An extensive log is generated showing\n\
+revealing any unknown cells, of course. An extensive log is generated showing\n\
 most of the stages of the solver algorithm. Each game is replayable by using the\n\
 corresponding seed in the log, for closer analysis or debugging.\n\n\
 *Usage/args:\n\
@@ -426,16 +426,16 @@ inline int play_game() {
 
 		//sprintf_s(buffer, "s%i ", numactions);
 		//mygamestats.trans_map += buffer;
-		//mygamestats.print_gamestats(SCREEN); // post-multicell print
+		//mygamestats.print_gamestats(SCREEN);
 		if (numactions != 0) {
 			consecutiveguesses = 0;
 			sprintf_s(buffer, "s%i ", numactions); // add entry to transition map
 			mygamestats.trans_map += buffer;
-			mygamestats.print_gamestats(myruninfo.SCREEN, &mygame, &myruninfo); // post-singlecell print
+			mygamestats.print_gamestats(myruninfo.SCREEN, &mygame, &myruninfo); // post-single-cell print
 		}
 
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// begin multi-cell logic (loops 6 times at most before returning to singlecell, configurable)
+		// begin two-cell logic (loops 6 times at most before returning to singlecell, configurable)
 		numactions = 0;
 		//std::list<class cell *> clearlist; std::list<class cell *> flaglist;
 		int numloops = 0;
@@ -490,27 +490,27 @@ inline int play_game() {
 				numactions += action;
 				mygamestats.began_solving = true;
 				numloops++;
-				if (numloops >= MULTICELL_LOOP_CUTOFF) { break; }
+				if (numloops >= TWOCELL_LOOP_CUTOFF) { break; }
 			} else {
 				break;
 			}
 
 		}
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// end multi-cell logic loop
+		// end two-cell logic loop
 
 		//sprintf_s(buffer, "m%i ", numactions);
 		//mygamestats.trans_map += buffer;
-		//mygamestats.print_gamestats(SCREEN); // post-multicell print
+		//mygamestats.print_gamestats(SCREEN);
 		if (numactions != 0) {
 			// if something changed, don't do guessing, instead go back to singlecell
 			consecutiveguesses = 0;
-			sprintf_s(buffer, "m%i ", numactions);// add entry to transition map, use 'numactions'
+			sprintf_s(buffer, "b%i ", numactions);// add entry to transition map, use 'numactions'
 			mygamestats.trans_map += buffer;
-			mygamestats.print_gamestats(myruninfo.SCREEN, &mygame, &myruninfo); // post-multicell print
+			mygamestats.print_gamestats(myruninfo.SCREEN, &mygame, &myruninfo); // post-two-cell print
 
 		} else {
-			// nothing changed during multi-cell, so reveal a new cell
+			// nothing changed during two-cell, so reveal a new cell
 
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			// begin GUESSING phase
@@ -528,7 +528,7 @@ inline int play_game() {
 				do it
 				isaguess=true, set trans_map_char
 			else if smart guess
-				chain build/optimize
+				multicell logic / build chain
 				if something was flagged/cleared,
 					trans_map_val = action#, set trans_map_char, consecutiveguesses=0
 				else if nothing was flagged/cleared,
@@ -541,7 +541,7 @@ inline int play_game() {
 				inc guesses, set trans_map_val = guesses
 				trans_map erase prev
 			trans_map add entry with trans_map_char and trans_map_val
-			process delayed win-or-lose
+			handle delayed win-or-lose
 			*/
 
 
@@ -572,10 +572,10 @@ inline int play_game() {
 				// with NEW smartguess, it will usually return 1 cell to clear, but it may return several to clear or several to flag
 
 				struct chain fullchain = chain();
-				r = strat_chain_builder_optimizer(&fullchain, &trans_map_val);
+				r = strat_multicell_logic_and_chain_builder(&fullchain, &trans_map_val);
 				if (r != 0) { return r; }	// if win, return; if lose, return as unexpeced loss
 				if (trans_map_val != 0) {	// if something was flagged/cleared, 
-					consecutiveguesses = 0; trans_map_char = 'O';
+					consecutiveguesses = 0; trans_map_char = 'M';
 				} else {					// if nothing was flagged/cleared, continue with smartguess
 					struct smartguess_return rx = smartguess(&fullchain, &mygamestats);
 

@@ -206,7 +206,7 @@ inline int factorial(int x);
 
 
 // functions for the recursive smartguess method(s)
-int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone);
+int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * thingsdone);
 struct smartguess_return smartguess(struct chain * master_chain, struct game_stats * gstats);
 struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain);
 
@@ -216,7 +216,7 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain);
 int strat_singlecell(class cell * me, int * thingsdone);
 
 
-// multi-cell strategies
+// two-cell strategies
 int strat_121_cross(class cell * center, struct game_stats * gstats, int * thingsdone);
 int strat_nonoverlap_flag(class cell * center, struct game_stats * gstats, int * thingsdone);
 int strat_nonoverlap_safe(class cell * center, struct game_stats * gstats, int * thingsdone);

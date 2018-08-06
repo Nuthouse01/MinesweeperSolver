@@ -73,7 +73,7 @@ short unsigned int cell::get_effective() {
 
 
 // cellptr: if the given X and Y are valid, returns a pointer to the cell; otherwise returns NULL
-// during single-cell and multi-cell iterations, just use &field[x][y] because the X and Y are guaranteed not off the edge
+// during single-cell and two-cell iterations, just use &field[x][y] because the X and Y are guaranteed not off the edge
 class cell * game::cellptr(int x, int y) {
 	if ((x < 0) || (x >= myruninfo.get_SIZEX()) || (y < 0) || (y >= myruninfo.get_SIZEY())) { return NULL; }
 	return &field[x][y];

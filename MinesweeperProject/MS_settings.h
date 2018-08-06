@@ -38,9 +38,9 @@ X/Y/mines
 #define HISTOGRAM_RESOLUTION		15
 #define HISTOGRAM_MAX_HORIZ_SIZE	40
 
-// after X loops, see if single-cell logic can take over... if not, will resume multicell
-// surprisingly multicell logic seems to consume even more time than the recursive smartguess when this value is high
-#define MULTICELL_LOOP_CUTOFF		6
+// after X loops, see if single-cell logic can take over... if not, will resume two-cell
+// surprisingly two-cell logic seems to consume even more time than the recursive smartguess when this value is high
+#define TWOCELL_LOOP_CUTOFF		6
 // in recursive function, after recursing X layers down, check to see if the chain is fragmented (almost certainly is)
 // this will have no impact on the accuracy of the result, and testing has shown that over many games it has almost no impact on efficiency
 // NOTE: this must be >= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN

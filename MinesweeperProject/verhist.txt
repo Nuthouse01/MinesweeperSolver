@@ -122,12 +122,12 @@ v4.10: Implemented game-loss histogram! Hid redundant stats as a result (still c
 			Massive disparity between actual winrate vs winrate derived from avg luck per guess and avg # guesses...
 			Probably due to smartguess not calculating risks perfectly? Might be resolved if 'perfect' mode is implemented
 		Made a little bit of 'runinfo' private, added setting/access functions
+		Renamed 'multi-cell logic' to 'two-cell logic' and renamed the chain build/optimize to 'multi-cell logic'
+			TODO: probably have to make even more changes in readme.txt
 		
 		
 		
 TODO:
-*rename "multi-cell logic" to "bi-cell logic" and rename the advanced solving to "multi-cell logic"?
-
 *re-test and probably eliminate "chain recheck depth" feature
 
 *3 guess options: 

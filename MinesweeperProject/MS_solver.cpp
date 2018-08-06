@@ -573,7 +573,7 @@ inline int factorial(int x) {
 // ROADMAP
 // TODO: update this roadmap with the "chain solver" strategy
 // 1)build the pods from visible, allow for dupes, no link cells yet. is stored in the "master chain". don't modify interior_unk yet
-// 2)iterate over pods, check for dupes and subsets (call extract_overlap on each pod with root in 5x5 around my root)
+// 2)iterate over pods, check for dupes and subsets, apply multicell logic (call extract_overlap on each pod with root in 5x5 around my root)
 // note if a pod becomes 100% or 0%, loop until no changes happen
 // 3)if any pods became 100% or 0%, return with those
 // 4)iterate again, removing pod contents from 'interior_unk'. Done here so there are fewer dupe pods, less time searching thru interior_unk
@@ -596,12 +596,12 @@ inline int factorial(int x) {
 
 
 
-// build and optimize the master chain that will be used for smartguess... encapsulates steps 1/2/3 of original 11-stage plan
-// also apply "advanced" versions of nonoverlap-safe and nonoverlap-flag; partial matches and chaining logic rules together
+// build the master chain that will be used for smartguess... encapsulates steps 1/2/3 of original 11-stage plan
+// also apply "multicell" versions of nonoverlap-safe and nonoverlap-flag; partial matches and chaining logic rules together
 // may identify some cells as "definite safe" or "definite mine", and will reveal/flag them internally
 // if no cells are flagged/cleared, will output the master chain thru input arg for passing to full recursive function below
 // return: 1=win/-1=loss/0=continue (winning is rare but theoretically possible, but cannot lose unless something is seriously out of whack)
-int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
+int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * thingsdone) {
 	static class cell dummycell; // cell w/ value 0
 	static struct pod dummypod; // pod w/ cell_list empty
 	static std::list<struct pod> dummylist; // one-entry list for dummypod
@@ -615,9 +615,9 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 	std::list<class cell *> clearme;
 	std::list<class cell *> flagme;
 
-	// step 1: iterate over field, get 'visible' cells, use them as roots to build pods.
-	// non-optimized: includes duplicates, before pod-subtraction. interior_unk not yet modified.
-	// pods are added to the chain already sorted (reading order by root), as are their cell_list contents
+	// step 1: iterate over field, get 'visible' cells, use them as roots to build pods and build the chain.
+	// chain is non-optimized: includes duplicates, before pod-subtraction.
+	// pods are added to the chain already sorted (reading order by root), as are their cell_list contents.
 	for (int y = 0; y < myruninfo.get_SIZEY(); y++) {
 		for (int x = 0; x < myruninfo.get_SIZEX(); x++) { // iterate over each cell
 			if (mygame.field[x][y].get_status() == VISIBLE) {
@@ -627,7 +627,7 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 	}
 
 	// step 2: iterate over pods, check for dupes and subsets (call extract_overlap on each pod with root in 5x5 around my root)
-	// this is where the "advanced solving" comes into play
+	// this is where the "multicell logic" comes into play, NOV-SAFE and NOV-FLAG partial matches chained together many times
 	// note if a pod becomes 100% or 0%... repeat until no changes are done. when deleting pods, what remains will still be in sorted order
 
 	/*
@@ -751,7 +751,7 @@ int strat_chain_builder_optimizer(struct chain * buildme, int * thingsdone) {
 	// NOTE: turns out that you can't safely apply 121 logic to the chain
 
 	if (clearme.size() || flagme.size()) {
-		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in optimization, found %i clear and %i flag\n", clearme.size(), flagme.size());
+		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in multicell, found %i clear and %i flag\n", clearme.size(), flagme.size());
 	}
 
 	// step 3: clear the clearme and flag the flagme
