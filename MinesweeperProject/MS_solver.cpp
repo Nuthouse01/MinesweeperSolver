@@ -813,8 +813,8 @@ struct smartguess_return smartguess(struct chain * master_chain, struct game_sta
 				// for each pod 'otherpod' with root within 5x5 found...
 				std::vector<std::vector<class cell *>> n = extract_overlap(podit->cell_list, around[i]->cell_list);
 				// ... only create links within podit!
-				for (int i = 0; i < n[2].size(); i++) {
-					podit->add_link(n[2][i], around[i]->root);
+				for (int j = 0; j < n[2].size(); j++) {
+					podit->add_link(n[2][j], around[i]->root);
 				}
 			}
 		}
