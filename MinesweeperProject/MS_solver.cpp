@@ -404,17 +404,18 @@ link_with_bool::link_with_bool(struct link asdf, bool f) {
 
 // constructor
 riskholder::riskholder(int x, int y) {
-	struct riskcell asdf2 = riskcell(); // needed for using the 'resize' command
-	std::vector<struct riskcell> asdf = std::vector<struct riskcell>(); // init empty
-	asdf.resize(y, asdf2);										// fill it with copies of asdf2
-	asdf.shrink_to_fit();												// set capacity exactly where i want it, no bigger
-	riskarray = std::vector<std::vector<struct riskcell>>();// init empty
-	riskarray.resize(x, asdf);						// fill it with copies of asdf
-	riskarray.shrink_to_fit();								// set capacity exactly where i want it, no bigger
+	std::vector<float> asdf2;	// needed for using the 'resize' command
+	asdf2.reserve(4);			// the max size needed is 8 but that's unlikely, lets just start with 4
+	std::vector<std::vector<float>> asdf;	// init empty
+	asdf.resize(y, asdf2);					// fill it with copies of asdf2
+	asdf.shrink_to_fit();					// set capacity exactly where i want it, no bigger
+	riskarray.clear();			// init empty
+	riskarray.resize(x, asdf);	// fill it with copies of asdf
+	riskarray.shrink_to_fit();	// set capacity exactly where i want it, no bigger
 }
 // takes a cell pointer and adds a risk to its list... could modify to use x/y, but why bother?
 void riskholder::addrisk(class cell * foo, float newrisk) {
-	(riskarray[foo->x][foo->y]).riskvect.push_back(newrisk);
+	(riskarray[foo->x][foo->y]).push_back(newrisk);
 }
 // iterate over itself and return the stuff tied for lowest risk
 struct riskreturn riskholder::findminrisk() {
@@ -437,25 +438,25 @@ struct riskreturn riskholder::findminrisk() {
 }
 // find the avg/max/min of the risks and return that value; also clear the list. if list is already empty, return -1
 float riskholder::finalrisk(int x, int y) {
-	if ((riskarray[x][y]).riskvect.empty())
+	if ((riskarray[x][y]).empty())
 		return -1.;
 	float retval = 0.;
-	int s = (riskarray[x][y]).riskvect.size();
+	int s = (riskarray[x][y]).size();
 	if (RISK_CALC_METHOD == 0) { // AVERAGE
 		float sum = 0.;
 		for (int i = 0; i < s; i++) {
-			sum += (riskarray[x][y]).riskvect[i];
+			sum += riskarray[x][y][i];
 		}
 		retval = sum / float(s);
 	}
 	if (RISK_CALC_METHOD == 1) { // MAXIMUM
 		retval = -1.;
 		for (int i = 0; i < s; i++) {
-			float t = (riskarray[x][y]).riskvect[i];
+			float t = riskarray[x][y][i];
 			if (t > retval) { retval = t; }
 		}
 	}
-	(riskarray[x][y]).riskvect.clear(); // clear it for use next time
+	(riskarray[x][y]).clear(); // clear it for use next time
 	return retval;
 }
 
@@ -785,11 +786,7 @@ int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * things
 // needs to somehow pass out info about whether it guessed or tried to solve a chain, and how many
 // return: 1=win/-1=loss/0=continue (winning is unlikely but possible)
 int smartguess(struct chain * master_chain, struct game_stats * gstats, int * thingsdone) {
-	static struct riskholder myriskholder;
-	if (myriskholder.riskarray.empty()) { // because it's static, init it like this only once
-		myriskholder = riskholder(myruninfo.get_SIZEX(), myruninfo.get_SIZEY());
-	}
-
+	static struct riskholder myriskholder(myruninfo.get_SIZEX(), myruninfo.get_SIZEY());
 	std::list<class cell *> interior_list = mygame.unklist;
 
 

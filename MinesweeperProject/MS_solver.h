@@ -143,17 +143,8 @@ struct riskholder {
 	riskholder() {};
 	riskholder(int x, int y);
 
-	// a struct used only within this struct, holds all contributing float-risks to be averaged
-	// TODO: eliminate this struct and instead use a 3D array?
-	struct riskcell {
-		riskcell() {
-			riskvect = std::vector<float>(); // why not
-			riskvect.reserve(8); // maximum size of vector is 8 (but highly unlikely)
-		}
-		std::vector<float> riskvect; // list of risks from various sources
-	};
 	// immitation of the 'field' for holding risk info, can be quickly accessed with x and y
-	std::vector<std::vector<struct riskcell>> riskarray;
+	std::vector<std::vector<std::vector<float>>> riskarray;
 
 	void addrisk(class cell * foo, float newrisk);
 	struct riskreturn findminrisk();
