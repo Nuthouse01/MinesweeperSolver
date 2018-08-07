@@ -13,6 +13,7 @@
 #include <list> // used
 #include <cassert> // so it aborts when something wierd happens (but its optimized away in 'release' mode)
 #include <algorithm> // for pod-based intelligent recursion
+#include <utility> // for 'pair' objects
 
 
 
@@ -117,24 +118,6 @@ private:
 	void identify_chains_recurse(int idx, struct pod * me);
 };
 
-// only returned by riskholder calculation, could use a tuple instead but i dont wanna learn another new thing
-// TODO: replace with tuple?
-struct riskreturn {
-	riskreturn() {};
-	riskreturn(float m, std::list<class cell *> * l);
-	float minrisk;
-	std::list<class cell *> minlist;
-};
-
-// only used to tie together links to remove with a boolean; could use a tuple instead but i dont wanna
-// TODO: replace with tuple?
-struct link_with_bool {
-	link_with_bool() {}
-	link_with_bool(struct link asdf, bool f);
-	bool flagme;
-	struct link l;
-};
-
 
 
 // an immitation of the 'field' object, to be allocated globally?? and reused each time the pod-smart-guess is used
@@ -147,7 +130,7 @@ struct riskholder {
 	std::vector<std::vector<std::vector<float>>> riskarray;
 
 	void addrisk(class cell * foo, float newrisk);
-	struct riskreturn findminrisk();
+	std::pair<float, std::list<class cell *>> findminrisk();
 private:
 	float finalrisk(int x, int y);
 };
@@ -155,7 +138,7 @@ private:
 
 
 // bundles the list of links to flag with an allocation #
-// TODO: could this be a tuple?
+// NOTE: this could be a pair/tuple but it would needlessly clutter the code
 struct scenario {
 	scenario() {};
 	scenario(std::list<std::list<struct link>::iterator> map, int num);

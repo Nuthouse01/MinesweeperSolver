@@ -222,13 +222,14 @@ int pod::remove_link(class cell * shared, bool isaflag) {
 // find all possible ways to allocate mines in the links/internals that aren't duplicate or equivalent
 std::list<struct scenario> pod::find_scenarios() {
 	// return a list of scenarios,
-	// where each scenario is a list of ITERATORS which point to my links
+	// where each scenario is a list of ITERATORS which point to my LINKS
 	std::list<struct scenario> retme;
 	// determine what values K to use, iterate over the range
 	int start = mines - (size() - links.size());
 	if (start < 0) { start = 0; } // greater of start or 0
 	int end = (mines < links.size() ? mines : links.size()); // lesser of mines/links
 	for (int i = start; i <= end; i++) {
+		// FIRST-TIER optimization: ignore actual allocation in non-link cells, just find all ways to put flags on link cells
 		// allocate some number of mines among the link cells
 		std::list<std::vector<int>> ret = comb(i, links.size());
 		// turn the ints into iterators
@@ -239,17 +240,20 @@ std::list<struct scenario> pod::find_scenarios() {
 			for (int k = 0; k < i; k++) { // each scenario will have length i
 				buildme.back().push_back(get_link((*retit)[k]));
 			}
-			// sort the scenario blind-wise so that equiv links are adjacent
+			// sort the scenario blind-wise (ignoring the actual link cell, only looking at the pods it connects to)
+			// this way equiv links (links connected to the same pods) are adjacent and can be easily detected
 			buildme.back().sort(sort_scenario_blind);
 		}
 
 		// now 'ret' has been converted to 'buildme', list of sorted lists of link-list-iterators
 		buildme.sort(sort_list_of_scenarios);
+		// SECOND-TIER optimization: eliminate scenarios containing the same number of inter-equivalent links
 		// now I have to do my own uniquify-and-also-build-scenario-objects section
+		// but whenever I find a duplicate I combine their allocation numbers and only use one
 		std::list<struct scenario> retme_sub;
 		std::list<std::list<std::list<struct link>::iterator>>::iterator buildit = buildme.begin();
 		std::list<std::list<std::list<struct link>::iterator>>::iterator prevlist = buildit;
-		int c = comb_int((mines - i), (size() - links.size()));
+		int c = comb_int((mines - i), (size() - links.size())); // how many ways are there to allocate mines among the non-link cells?
 		retme_sub.push_back(scenario((*buildit), c));
 
 		for (buildit++; buildit != buildme.end(); buildit++) {
@@ -391,17 +395,6 @@ void chain::identify_chains_recurse(int idx, struct pod * me) {
 }
 
 
-// basic tuple-like constructor
-riskreturn::riskreturn(float m, std::list<class cell *> * l) {
-	minrisk = m; minlist = *l;
-}
-
-// basic tuple-like constructor
-link_with_bool::link_with_bool(struct link asdf, bool f) {
-	flagme = f; l = asdf;
-}
-
-
 // constructor
 riskholder::riskholder(int x, int y) {
 	std::vector<float> asdf2;	// needed for using the 'resize' command
@@ -418,8 +411,8 @@ void riskholder::addrisk(class cell * foo, float newrisk) {
 	(riskarray[foo->x][foo->y]).push_back(newrisk);
 }
 // iterate over itself and return the stuff tied for lowest risk
-struct riskreturn riskholder::findminrisk() {
-	std::list<class cell *> minlist = std::list<class cell *>();
+std::pair<float, std::list<class cell *>> riskholder::findminrisk() {
+	std::list<class cell *> minlist;
 	float minrisk = 100.;
 	for (int m = 0; m < myruninfo.get_SIZEX(); m++) {
 		for (int n = 0; n < myruninfo.get_SIZEY(); n++) {
@@ -433,7 +426,7 @@ struct riskreturn riskholder::findminrisk() {
 			minlist.push_back(&mygame.field[m][n]);
 		}
 	}
-	struct riskreturn retme = riskreturn(minrisk, &minlist);
+	std::pair<float, std::list<class cell *>> retme(minrisk, minlist);
 	return retme;
 }
 // find the avg/max/min of the risks and return that value; also clear the list. if list is already empty, return -1
@@ -475,6 +468,8 @@ scenario::scenario(std::list<std::list<struct link>::iterator> map, int num) {
 // sort/uniquify functions and general-use utility functions
 
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
+// compare lists of cells
+// compare_list_of_cells -> compare_two_cells
 inline int compare_list_of_cells(std::list<class cell *> a, std::list<class cell *> b) {
 	if (a.size() != b.size())
 		return b.size() - a.size();
@@ -486,18 +481,17 @@ inline int compare_list_of_cells(std::list<class cell *> a, std::list<class cell
 		if (c != 0) { return c; }
 		ait++; bit++;
 	}
-	// i guess they're identical
-	return 0;
+	return 0; // i guess they're identical
 }
-
 // return true if the 1st arg goes before the 2nd arg, return false if 1==2 or 2 goes before 1
-// intentionally ignores the shared_cell member
+// compare scenarios (lists of cells), while ignoring the shared_cell arg
+// sort_scenario_blind -> compare_list_of_cells -> compare_two_cells
 bool sort_scenario_blind(std::list<struct link>::iterator a, std::list<struct link>::iterator b) {
 	if (compare_list_of_cells(a->linked_roots, b->linked_roots) < 0) { return true; } else { return false; }
 }
-
-// compare two scenarios, while ignoring the shared_cell arg
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
+// compare lists of scenarios (lists of lists of cells), while ignoring the shared_cell arg
+// compare_list_of_scenarios -> compare_list_of_cells -> compare_two_cells
 inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
 	if (a.size() != b.size())
 		return b.size() - a.size();
@@ -508,15 +502,15 @@ inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator>
 		if (c != 0) { return c; }
 		ait++; bit++;
 	}
-	// i guess they're identical
-	return 0;
+	return 0; // i guess they're identical
 }
-
 // return true if the 1st arg goes before the 2nd arg, return false if 1==2 or 2 goes before 1
 // intentionally ignores the shared_cell member
+// sort_list_of_scenarios -> compare_list_of_scenarios -> compare_list_of_cells -> compare_two_cells
 bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
 	if (compare_list_of_scenarios(a, b) < 0) { return true; } else { return false; }
 }
+// equivalent_list_of_scenarios -> compare_list_of_scenarios -> compare_list_of_cells -> compare_two_cells
 bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
 	if (compare_list_of_scenarios(a, b) == 0) { return true; } else { return false; }
 }
@@ -553,18 +547,12 @@ std::list<std::vector<int>> comb(int K, int N) {
 inline int comb_int(int K, int N) {
 	return factorial(N) / (factorial(K) * factorial(N - K));
 }
-
+// i never need to know higher than 8! so just hardcode the answers
 inline int factorial(int x) {
 	if (x < 2) return 1;
 	switch (x) {
-	case 2: return 2;
-	case 3: return 6;
-	case 4: return 24;
-	case 5: return 120;
-	case 6: return 720;
-	case 7: return 5040;
-	case 8: return 40320;
-	default: return -1;
+		case 2: return 2; case 3: return 6; case 4: return 24; case 5: return 120; 
+		case 6: return 720; case 7: return 5040; case 8: return 40320; default: return -1;
 	}
 }
 
@@ -646,8 +634,7 @@ int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * things
 	bool erased_myself = false;
 	do {
 		changes = false;
-		// implement my own post-loop increment instead of doing it in the for-loop header
-		for (std::list<struct pod>::iterator podit = buildme->podlist.begin(); podit != buildme->podlist.end(); ) {
+		for (std::list<struct pod>::iterator podit = buildme->podlist.begin(); podit != buildme->podlist.end(); ) { // intentionally missing post-loop incremnt
 			std::vector<std::list<struct pod>::iterator> around = buildme->get_5x5_around(podit, false);
 			for (int b = 0; b < around.size(); b++) {
 				std::list<struct pod>::iterator otherpod = around[b]; // for each pod 'otherpod' with root within 5x5 found...
@@ -940,32 +927,28 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 	}
 
 	// step 11: find the minimum risk from anything in the border cells (pods) and any cells with that risk
-	struct riskreturn myriskreturn = myriskholder.findminrisk();
+	std::pair<float, std::list<class cell *>> myriskreturn = myriskholder.findminrisk();
 
 	// step 12: decide between border and interior, call 'rand_from_list' and return
-	if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, interior_risk = %.3f, border_risk = %.3f\n", interior_risk, myriskreturn.minrisk);
+	if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, interior_risk = %.3f, border_risk = %.3f\n", interior_risk, myriskreturn.first);
 	//if (interior_risk == 100.) {
 	//	// unlikely but plausible (note: if interior is empty, interior_risk will be set at 150)
 	//	// this is eclipsed by the 'maxguess' section, unless this scenario happens before the end-game
 	//	results.flagme.insert(results.flagme.end(), interior_list.begin(), interior_list.end());
 	//	results.method = 2;
 	//} else 
-	if (interior_risk < myriskreturn.minrisk) {
+	if (interior_risk < myriskreturn.first) {
 		// interior is safer
 		gstats->luck_value_mult *= (1. - (interior_risk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
 		gstats->luck_value_sum += (1. - (interior_risk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
-		//results.clearme.push_back(rand_from_list(&interior_list));
-		//results.method = 1;
 		// in smartguess, i don't care about how many cells are uncovered from one guess, just if it is loss or continue
 		int r = mygame.reveal(rand_from_list(&interior_list));
 		return ((r==-1) ? -1 : 0); // if -1, return -1; otherwise, return 0
 	} else {
 		// border is safer, or they are tied
-		gstats->luck_value_mult *= (1. - (myriskreturn.minrisk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
-		gstats->luck_value_sum += (1. - (myriskreturn.minrisk / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
-		//results.clearme.push_back(rand_from_list(&myriskreturn.minlist));
-		//results.method = 1;
-		int r = mygame.reveal(rand_from_list(&myriskreturn.minlist));
+		gstats->luck_value_mult *= (1. - (myriskreturn.first / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
+		gstats->luck_value_sum += (1. - (myriskreturn.first / 100.)); // turn it from 'chance its a mine' to 'chance its safe'
+		int r = mygame.reveal(rand_from_list(&myriskreturn.second));
 		return ((r == -1) ? -1 : 0); // if -1, return -1; otherwise, return 0
 	}
 	return 0; // this should be impossible to hit
@@ -1034,7 +1017,7 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 	}
 
 	// step 2: pick a pod, find all ways to saturate it
-	// NOTE: first-level optimization is that only link/overlap cells are considered... specific allocations within interior cells are
+	// NOTE: first-level optimization is that only link/overlap cells are considered... specific allocations within non-link cells are
 	//       ignored, since they have no effect on placing flags in any other pods.
 	// NOTE: second-level optimization is eliminating redundant combinations of 'equivalent links', i.e. links that span the same pods
 	//       are interchangeable, and I don't need to test all combinations of them.
@@ -1052,9 +1035,8 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 		struct chain copychain = mychain;
 		struct podwise_return asdf;
 
-		// these aren't "links", i'm just re-using the struct as a convenient way to couple
-		// one link-cell cell with each pod it needs to be removed from
-		std::list<struct link_with_bool> links_to_flag_or_clear;
+		// list of links that need to be removed from the chain; first is link, second is (true=flag, false=reveal)
+		std::list<std::pair<struct link, bool>> links_to_flag_or_clear;
 
 		std::list<struct pod>::iterator frontpod = copychain.int_to_pod(mainpodindex);
 		// step 3a: apply the changes according to the scenario by moving links from front() pod to links_to_flag_or_clear
@@ -1062,8 +1044,9 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 			// turn iterator-over-iterator into just an iterator
 			std::list<struct link>::iterator linkit = *r;
 			// copy it from front().links to links_to_flag_or_clear as 'flag'...
-			links_to_flag_or_clear.push_back(link_with_bool(*linkit, true));
+			links_to_flag_or_clear.push_back(std::pair<struct link, bool>(*linkit, true));
 			// I really wanted to use "erase" here instead of "remove", oh well
+			// 'erase' = 'go here and delete object at this iterator', 'remove' = 'find and delete one that is identical to this'
 			// linkit is pointing at the link in the pod in the chain BEFORE I made a copy
 			// i made links before I made the copy because I found the 'equivalent links' before the copy
 			// ...and delete the original
@@ -1071,7 +1054,7 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 		}
 		// then copy all remaining links to links_to_flag_or_clear as 'clear'
 		for (std::list<link>::iterator linkit = frontpod->links.begin(); linkit != frontpod->links.end(); linkit++) {
-			links_to_flag_or_clear.push_back(link_with_bool(*linkit, false));
+			links_to_flag_or_clear.push_back(std::pair<struct link, bool>(*linkit, false));
 		}
 
 		// frontpod erases itself and increments by how many mines it has that aren't in the queue
@@ -1082,19 +1065,21 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 		// step 3b: iterate along links_to_flag_or_clear, removing the links from any pods they appear in...
 		// there is high possibility of duplicate links being added to the list, but its handled just fine
 		// decided to run depth-first (stack) instead of width-first (queue) because of the "looping problem"
+		// NOTE: this is probably the most complex and delicate part of the whole MinesweeperSolver, the "looping problem" was 
+		//		a real bitch to solve and I can't quite remember WHY arranging it like this works. So, change at your own risk!
 		while (!links_to_flag_or_clear.empty()) {
 			// for each link 'blinkit' to be flagged...
-			struct link_with_bool blink = links_to_flag_or_clear.front();
+			std::pair<struct link, bool> blink = links_to_flag_or_clear.front();
 			links_to_flag_or_clear.pop_front();
 
-			class cell * sharedcell = blink.l.link_cell;
-			bool tmp = false;
+			class cell * sharedcell = blink.first.link_cell;
+			bool succesfullyflaggedandremovedlinkfromapod = false;
 			// ...go to every pod with a root 'rootit' referenced in 'linkitf' and remove the link from them!
-			for (std::list<class cell *>::iterator rootit = blink.l.linked_roots.begin(); rootit != blink.l.linked_roots.end(); rootit++) {
+			for (std::list<class cell *>::iterator rootit = blink.first.linked_roots.begin(); rootit != blink.first.linked_roots.end(); rootit++) {
 				std::list<struct pod>::iterator activepod = copychain.root_to_pod(*rootit);
 				if (activepod == copychain.podlist.end()) { continue; }
-				if (activepod->remove_link(sharedcell, blink.flagme)) { continue; }
-				tmp = blink.flagme;
+				if (activepod->remove_link(sharedcell, blink.second)) { continue; } // if link wasn't found, just move on... will happen ALOT
+				succesfullyflaggedandremovedlinkfromapod = blink.second;
 
 				// step 3c: after each change, see if activepod has become 100/0/disjoint/negative... if so, modify podlist and links_to_flag_or_clear
 				//		when finding disjoint, delete it and inc "flags this scenario" accordingly
@@ -1110,7 +1095,7 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 					goto LABEL_END_OF_THE_SCENARIO_LOOP;
 				case 2: // risk = 0
 					for (std::list<link>::iterator linkit = activepod->links.begin(); linkit != activepod->links.end(); linkit++) {
-						links_to_flag_or_clear.push_front(link_with_bool(*linkit, false));
+						links_to_flag_or_clear.push_front(std::pair<struct link, bool>(*linkit, false));
 					}
 					// no inc because I know there are no mines here
 					copychain.podlist.erase(activepod);
@@ -1119,10 +1104,10 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 						// add the remaining links in (*activepod) to links_to_flag_or_clear
 						// if risk = 0, will add with 'false'... if risk = 100, will add with 'true'
 					for (std::list<link>::iterator linkit = activepod->links.begin(); linkit != activepod->links.end(); linkit++) {
-						struct link_with_bool t = link_with_bool(*linkit, true);
+						std::pair<struct link, bool> t(*linkit, true);
 						// need to add myself to the link so i will be looked at later and determined to be disjoint
 						// hopefully fixes the looping-problem!
-						t.l.linked_roots.push_back(activepod->root);
+						t.first.linked_roots.push_back(activepod->root);
 						links_to_flag_or_clear.push_front(t);
 					}
 					// inc by the non-link cells because the links will be placed later
@@ -1141,14 +1126,14 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 					break; // not needed, but whatever
 				}
 			} // end of iteration on shared_roots
-			if (tmp) {
+			if (succesfullyflaggedandremovedlinkfromapod) {
 				flagsthislvl++;
 				if ((mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) && (allocsthislvl == 1))
 					cellsflaggedthislvl.push_back(sharedcell);
 			}
 		}// end of iteration on links_to_flag_or_clear
 
-		 // step 4: recurse! when it returns, append to resultlist its value + how many flags placed in 3a/3b/3c
+		// step 4: recurse! when it returns, append to resultlist its value + how many flags placed in 3a/3b/3c
 		asdf = podwise_recurse(rescan_counter, copychain);
 		asdf += flagsthislvl; // inc the answer for each by how many flags placed this level
 		asdf *= allocsthislvl; // multiply the # allocations for this scenario into each

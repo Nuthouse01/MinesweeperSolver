@@ -107,7 +107,7 @@ void myprintfn(int p, const char* fmt, ...);
 inline bool sort_by_position(class cell * a, class cell * b);
 inline int compare_two_cells(class cell * a, class cell * b);
 std::vector<std::vector<class cell *>> extract_overlap(std::vector<class cell *> me_unk, std::vector<class cell *> other_unk);
-struct cell * rand_from_list(std::list<cell *> * fromme);
+class cell * rand_from_list(std::list<cell *> * fromme);
 
 
 /* currently unused
