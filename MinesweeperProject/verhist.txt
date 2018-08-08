@@ -106,11 +106,11 @@ v4.9: Logs go to LOGS folder, creates the folder if its not there already
 		Created 'stats' file
 		Slightly changed how some 'globals' are initialized
 		
-v4.10: Implemented game-loss histogram! Hid redundant stats as a result (still calculated, not displayed)
+v4.10: 	Implemented game-loss histogram! Hid redundant stats as a result (still calculated, not displayed)
 		CLEANUP: Reduced #includes to only what's necessary where its necessary
 		CLEANUP: Made single-cell logic into a function, created new convention/standard for the logic/rule functions
 		CLEANUP: Refined the multi-cell logic functions, fits the new convention
-		Implemented 'queueing' strategy, determined it doesn't offer any improvement, and reverted to in-place strategy
+		Implemented 'queueing' strategy for two-cell, determined it doesn't offer any improvement, and reverted to in-place strategy
 		CLEANUP: Moved rand_from_list to basegame, wanted to templatize but turns out I don't need to
 		CLEANUP: Renamed find_nonoverlap to extract_overlap and moved to basegame
 		CLEANUP: Smartguess accumulates stats into game_stats, so nothing changes run_stats until the end-of-game
@@ -126,7 +126,9 @@ v4.10: Implemented game-loss histogram! Hid redundant stats as a result (still c
 			TODO: probably have to make even more changes in readme.txt
 		CLEANUP: moved the flagging/clearing bit inside the smartguess function
 		CLEANUP: changed riskholder to use a 3d array instead of a 2d array of special structs
+		CLEANUP: replaced some unneccessary structs with tuples
 		
+v4.11:	Begin trying to improve the smartguess method, will move to v5.0 when new method is done
 		
 TODO:
 *re-test and probably eliminate "chain recheck depth" feature

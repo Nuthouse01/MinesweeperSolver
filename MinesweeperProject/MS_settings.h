@@ -25,7 +25,7 @@ X/Y/mines
 #define NUM_MINES_def				95
 #define	FIND_EARLY_ZEROS_def		false
 #define RANDOM_USE_SMART_def		true
-#define VERSION_STRING_def			"v4.10"
+#define VERSION_STRING_def			"v4.11"
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 // -1: logfile is empty except for run-end results
