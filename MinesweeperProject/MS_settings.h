@@ -29,7 +29,7 @@ X/Y/mines
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 // -1: logfile is empty except for run-end results
-#define SCREEN_def					0
+#define SCREEN_def					-1
 // if SPECIFY_SEED = 0, will generate a new seed from current time
 #define SPECIFY_SEED_def			0
 
@@ -42,7 +42,7 @@ X/Y/mines
 // surprisingly two-cell logic seems to consume even more time than the recursive smartguess when this value is high
 #define TWOCELL_LOOP_CUTOFF		6
 // in recursive function, after recursing X layers down, check to see if the chain is fragmented (almost certainly is)
-// this will have no impact on the accuracy of the result, and testing has shown that over many games it has almost no impact on efficiency
+// this should have no impact on the accuracy of the result, and testing has shown that over many games it has almost no impact on efficiency
 // NOTE: this must be >= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN
 #define CHAIN_RECHECK_DEPTH			8
 // when there are fewer than X mines on the field, begin storing the actual cells flagged to create each answer found by recursion

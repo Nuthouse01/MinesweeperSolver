@@ -12,23 +12,23 @@
 #include "MS_solver.h" // include myself
 
 // a global flag used in the recursive smartguess
-bool recursion_safety_valve = false; // if recursion goes down a rabbithole, start taking shortcuts
+bool recursion_safety_valve = false; // if recursion goes down a rabbithole, start taking shortcuts (not needed outside this file)
 
 
 // **************************************************************************************
 // member functions for the buttload of structs
 
 solutionobj::solutionobj(float ans, int howmany) {
-	answer = ans; allocs = howmany;
-	solution_flag = std::list<class cell *>(); // init as empty list
+	answer = ans; allocs_encompassed = howmany;
+	allocation = std::list<class cell *>(); // init as empty list
 }
 
 
 podwise_return::podwise_return() { // construct empty
-	solutions = std::list<struct solutionobj>();
+	solutions.clear();
 	effort = 0;
 }
-podwise_return::podwise_return(float ans, int howmany) { // construct from one value
+podwise_return::podwise_return(float ans, int howmany) { // construct from one value, signifies end-of-branch
 	solutions = std::list<struct solutionobj>(1, solutionobj(ans, howmany));
 	effort = 1;
 }
@@ -40,17 +40,16 @@ inline float podwise_return::efficiency() {
 	float t2 = 1. - t1;
 	if (t2 > 0.) { return t2; } else { return 0.; }
 }
-// TODO: double-check that all 4 of these are actually live code!!
 // podwise_return += list of cell pointers: append into all solutions
 inline struct podwise_return& podwise_return::operator+=(const std::list<class cell *>& addlist) {
 	for (std::list<struct solutionobj>::iterator listit = solutions.begin(); listit != solutions.end(); listit++) {
-		listit->solution_flag.insert(listit->solution_flag.end(), addlist.begin(), addlist.end());
+		listit->allocation.insert(listit->allocation.end(), addlist.begin(), addlist.end());
 	}
 	return *this;
 }
-// podwise_return *= int: multiply into all 'allocs' in the list
+// podwise_return *= int: multiply into all 'allocs_encompassed' in the list
 inline struct podwise_return& podwise_return::operator*=(const int& rhs) {
-	for (std::list<struct solutionobj>::iterator listit = solutions.begin(); listit != solutions.end(); listit++) { listit->allocs *= rhs; }
+	for (std::list<struct solutionobj>::iterator listit = solutions.begin(); listit != solutions.end(); listit++) { listit->allocs_encompassed *= rhs; }
 	return *this;
 }
 // podwise_return += int: increment all 'answers' in the list
@@ -59,7 +58,7 @@ inline struct podwise_return& podwise_return::operator+=(const int& rhs) {
 	return *this;
 }
 // podwise_return += podwise_return: combine
-inline struct podwise_return& podwise_return::operator+=(const struct podwise_return& rhs) {
+inline struct podwise_return& podwise_return::operator+=(struct podwise_return& rhs) {
 	solutions.insert(solutions.end(), rhs.solutions.begin(), rhs.solutions.end());
 	effort += rhs.effort;
 	return *this;
@@ -72,8 +71,8 @@ float podwise_return::avg() {
 	while (listit != solutions.end()) {
 		if (listit->answer <= float(mygame.get_mines_remaining())) {
 			if (USE_WEIGHTED_AVG) {
-				a += listit->answer * listit->allocs;
-				total_weight += listit->allocs;
+				a += listit->answer * listit->allocs_encompassed;
+				total_weight += listit->allocs_encompassed;
 			} else {
 				a += listit->answer;
 				total_weight++;
@@ -103,7 +102,7 @@ struct solutionobj * podwise_return::prmax() {
 		if (solit->answer == maxit->answer) { tied_for_max = true; } // tied
 		else if (solit->answer > maxit->answer) { tied_for_max = false; maxit = solit; }
 	}
-	if (tied_for_max || (maxit->allocs != 1)) { return NULL; } else { return &(*maxit); }
+	if (tied_for_max || (maxit->allocs_encompassed != 1)) { return NULL; } else { return &(*maxit); }
 }
 // max_val: if there is a tie, return a value anyway
 float podwise_return::max_val() {
@@ -124,7 +123,7 @@ struct solutionobj * podwise_return::prmin() {
 		if (solit->answer == minit->answer) { tied_for_min = true; } // tied
 		else if (solit->answer < minit->answer) { tied_for_min = false; minit = solit;}
 	}
-	if (tied_for_min || (minit->allocs != 1)) { return NULL; } else { return &(*minit); }
+	if (tied_for_min || (minit->allocs_encompassed != 1)) { return NULL; } else { return &(*minit); }
 }
 // min_val: if there is a tie, return a value anyway
 float podwise_return::min_val() {
@@ -138,7 +137,7 @@ float podwise_return::min_val() {
 // total_alloc: sum the alloc values for all solutions in the list
 int podwise_return::total_alloc() {
 	int retval = 0;
-	for (std::list<struct solutionobj>::iterator solit = solutions.begin(); solit != solutions.end(); solit++) {retval += solit->allocs;}
+	for (std::list<struct solutionobj>::iterator solit = solutions.begin(); solit != solutions.end(); solit++) { retval += solit->allocs_encompassed; }
 	return retval;
 }
 
@@ -149,7 +148,7 @@ int podwise_return::total_alloc() {
 float pod::risk() { return (100. * float(mines) / float(size())); }
 // if outside recursion, return cell_list.size(); if inside recursion, return cell_list_size
 int pod::size() { if (cell_list_size < 0) { return cell_list.size(); } else { return cell_list_size; } }
-// scan the pod for any "special cases", perform 'switch' on result: 0=normal, 1=negative risk, 2=0 risk, 3=100 risk, 4=disjoint
+// scan the pod for any "special cases", perform 'switch' on result: 4=disjoint, 1=negative risk, 2=0 risk, 3=100 risk, 0=normal
 int pod::scan() {
 	if (links.empty()) { return 4; }
 	float z = risk(); // might crash if it tries to divide by size 0, so disjoint-check must be first
@@ -177,9 +176,11 @@ void pod::add_link(class cell * shared, class cell * shared_root) {
 			// if a match is found, add it to existing
 			link_iter->linked_roots.push_back(shared_root);
 			std::list<class cell *>::iterator middle = link_iter->linked_roots.end(); middle--;
-			if (link_iter->linked_roots.begin() != middle) {
+			//if (link_iter->linked_roots.begin() != middle) {
+				// note: for inplace_merge to work, begin != middle and middle != end
+				// but because this only merges if existing thing is found, this check is not needed
 				std::inplace_merge(link_iter->linked_roots.begin(), middle, link_iter->linked_roots.end(), sort_by_position);
-			}
+			//}
 			break;
 		}
 	}
@@ -220,7 +221,7 @@ int pod::remove_link(class cell * shared, bool isaflag) {
 	return 1;
 }
 // find all possible ways to allocate mines in the links/internals that aren't duplicate or equivalent
-std::list<struct scenario> pod::find_scenarios() {
+std::list<struct scenario> pod::find_scenarios(bool use_t2_opt) {
 	// return a list of scenarios,
 	// where each scenario is a list of ITERATORS which point to my LINKS
 	std::list<struct scenario> retme;
@@ -241,30 +242,30 @@ std::list<struct scenario> pod::find_scenarios() {
 				buildme.back().push_back(get_link((*retit)[k]));
 			}
 			// sort the scenario blind-wise (ignoring the actual link cell, only looking at the pods it connects to)
-			// this way equiv links (links connected to the same pods) are adjacent and can be easily detected
-			buildme.back().sort(sort_scenario_blind);
+			// this way equiv links (links connected to the same pods) are sequential and can be easily detected
+			if (use_t2_opt) { buildme.back().sort(sort_scenario_blind); }
 		}
 
 		// now 'ret' has been converted to 'buildme', list of sorted lists of link-list-iterators
-		buildme.sort(sort_list_of_scenarios);
+		if (use_t2_opt) { buildme.sort(sort_list_of_scenarios); }
 		// SECOND-TIER optimization: eliminate scenarios containing the same number of inter-equivalent links
 		// now I have to do my own uniquify-and-also-build-scenario-objects section
 		// but whenever I find a duplicate I combine their allocation numbers and only use one
 		std::list<struct scenario> retme_sub;
 		std::list<std::list<std::list<struct link>::iterator>>::iterator buildit = buildme.begin();
-		std::list<std::list<std::list<struct link>::iterator>>::iterator prevlist = buildit;
+		std::list<std::list<std::list<struct link>::iterator>>::iterator previt = buildit;
 		int c = comb_int((mines - i), (size() - links.size())); // how many ways are there to allocate mines among the non-link cells?
 		retme_sub.push_back(scenario((*buildit), c));
-
-		for (buildit++; buildit != buildme.end(); buildit++) {
-			if (compare_list_of_scenarios(*prevlist, *buildit) == 0) {
+		buildit++; // buildit starts at 1, previt starts at 0
+		while (buildit != buildme.end()) {
+			if (use_t2_opt && (compare_list_of_scenarios(*previt, *buildit) == 0)) {
 				// if they are the same, revise the previous entry
-				retme_sub.back().allocs += c;
+				retme_sub.back().allocs_encompassed += c;
 			} else {
 				// if they are different, add as a new entry
 				retme_sub.push_back(scenario((*buildit), c));
 			}
-			prevlist = buildit;
+			previt++; buildit++;
 		}
 		// add retme_sub to the total string retme
 		retme.insert(retme.end(), retme_sub.begin(), retme_sub.end());
@@ -456,7 +457,7 @@ float riskholder::finalrisk(int x, int y) {
 
 // basic tuple-like constructor
 scenario::scenario(std::list<std::list<struct link>::iterator> map, int num) {
-	roadmap = map; allocs = num;
+	scenario_links_to_flag = map; allocs_encompassed = num;
 }
 
 
@@ -487,7 +488,7 @@ inline int compare_list_of_cells(std::list<class cell *> a, std::list<class cell
 // compare scenarios (lists of cells), while ignoring the shared_cell arg
 // sort_scenario_blind -> compare_list_of_cells -> compare_two_cells
 bool sort_scenario_blind(std::list<struct link>::iterator a, std::list<struct link>::iterator b) {
-	if (compare_list_of_cells(a->linked_roots, b->linked_roots) < 0) { return true; } else { return false; }
+	return (compare_list_of_cells(a->linked_roots, b->linked_roots) < 0);
 }
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
 // compare lists of scenarios (lists of lists of cells), while ignoring the shared_cell arg
@@ -508,11 +509,11 @@ inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator>
 // intentionally ignores the shared_cell member
 // sort_list_of_scenarios -> compare_list_of_scenarios -> compare_list_of_cells -> compare_two_cells
 bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
-	if (compare_list_of_scenarios(a, b) < 0) { return true; } else { return false; }
+	return (compare_list_of_scenarios(a, b) < 0);
 }
 // equivalent_list_of_scenarios -> compare_list_of_scenarios -> compare_list_of_cells -> compare_two_cells
 bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
-	if (compare_list_of_scenarios(a, b) == 0) { return true; } else { return false; }
+	return (compare_list_of_scenarios(a, b) == 0);
 }
 
 
@@ -542,7 +543,6 @@ std::list<std::vector<int>> comb(int K, int N) {
 }
 
 // return the # of total combinations you can choose K from N, simple math function
-// currently only used for extra debug info
 // = N! / (K! * (N-K)!)
 inline int comb_int(int K, int N) {
 	return factorial(N) / (factorial(K) * factorial(N - K));
@@ -560,7 +560,7 @@ inline int factorial(int x) {
 // **************************************************************************************
 // smartguess functions
 // ROADMAP
-// TODO: update this roadmap with the "chain solver" strategy
+// TODO: update this scenario_links_to_flag with the "chain solver" strategy
 // 1)build the pods from visible, allow for dupes, no link cells yet. is stored in the "master chain". don't modify interior_unk yet
 // 2)iterate over pods, check for dupes and subsets, apply multicell logic (call extract_overlap on each pod with root in 5x5 around my root)
 // note if a pod becomes 100% or 0%, loop until no changes happen
@@ -789,7 +789,9 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 	}
 
 	float interior_risk = 150.;
-	if (!interior_list.empty() || (mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN)) {
+	// if there are no interior cells AND it is not near the endgame, then skip the recursion
+	bool use_endsolver = (mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN);
+	if (!interior_list.empty() || use_endsolver) {
 
 		// step 5: iterate again, building links to anything within 5x5(only set MY links)
 		for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
@@ -805,11 +807,10 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		}
 
 		// step 6: identify chains and sort the pods into a VECTOR of chains... 
-		// at the same time, turn "cell_list" into a simple number, and clear the actual list so it uses less memory while recursing
 		int numchains = master_chain->identify_chains();
-		// if there are only a few mines left, then don't eliminate the cell_list contents
-		bool reduce = (mygame.get_mines_remaining() > RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN);
-		std::vector<struct chain> listofchains = master_chain->sort_into_chains(numchains, reduce);
+		// normal case: turn "cell_list" into a simple number, and clear the actual list so it uses less memory while recursing
+		// near endsolver: don't eliminate the cell_list contents, let it remain a list
+		std::vector<struct chain> listofchains = master_chain->sort_into_chains(numchains, !use_endsolver);
 
 		// step 7: for each chain, recurse (depth, chain are only arguments) and get back list of answer allocations
 		// handle the multiple podwise_retun objects, just sum their averages
@@ -818,9 +819,11 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		std::vector<struct podwise_return> retholder = std::vector<struct podwise_return>(numchains, podwise_return());
 		for (int s = 0; s < listofchains.size(); s++) {
 			recursion_safety_valve = false; // reset the flag for each chain
-			struct podwise_return asdf = podwise_recurse(0, listofchains[s]);
+			struct podwise_return asdf = podwise_recurse(0, &(listofchains[s]), false, use_endsolver);
+			// TODO: make perfectmode conditional on stuff
 			border_allocation += asdf.avg();
-			if (mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) { retholder[s] = asdf; }
+			if (use_endsolver) { retholder[s] = asdf; }
+
 			if (ACTUAL_DEBUG || recursion_safety_valve) myprintfn(2, "DEBUG: in smart-guess, chain %i with %i pods found %i solutions\n", s, listofchains[s].podlist.size(), asdf.size());
 			if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, chain %i eliminated %.3f%% of allocations as redundant\n", s, (100. * asdf.efficiency()));
 			gstats->smartguess_valves_tripped += recursion_safety_valve;
@@ -835,7 +838,7 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		// solution: see if it solves the puzzle to clear each interior mine + flag fewest posible in each chain
 		// solution: if there are 0? interior-list cells remaining, see if there are any allocations that produce an invalid total 
 		//			no matter what chains they are matched with?
-		if (mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) {
+		if (use_endsolver) {
 			float minsum = 0; float maxsum = 0;
 			for (int a = 0; a < retholder.size(); a++) { minsum += retholder[a].min_val(); maxsum += retholder[a].max_val(); }
 			int retval = 0; // win/loss/continue return value
@@ -851,7 +854,7 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 				for (int a = 0; a < numchains; a++) {
 					struct solutionobj * minsol = retholder[a].prmin();
 					if (minsol != NULL) {
-						for (std::list<class cell *>::iterator soliter = minsol->solution_flag.begin(); soliter != minsol->solution_flag.end(); soliter++) {
+						for (std::list<class cell *>::iterator soliter = minsol->allocation.begin(); soliter != minsol->allocation.end(); soliter++) {
 							*thingsdone += 1;
 							if (mygame.set_flag(*soliter) == 1) { retval = 1; }
 						}
@@ -862,12 +865,11 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 					*thingsdone += 1;
 					if (mygame.set_flag(*iiter) == 1) { retval = 1; }
 				}
-
 				// for each chain, get the maximum solution object (if there is only one), and if it has only 1 allocation, then apply it
 				for (int a = 0; a < numchains; a++) {
 					struct solutionobj * maxsol = retholder[a].prmax();
 					if (maxsol != NULL) {
-						for (std::list<class cell *>::iterator soliter = maxsol->solution_flag.begin(); soliter != maxsol->solution_flag.end(); soliter++) {
+						for (std::list<class cell *>::iterator soliter = maxsol->allocation.begin(); soliter != maxsol->allocation.end(); soliter++) {
 							*thingsdone += 1;
 							if (mygame.set_flag(*soliter) == 1) { retval = 1; }
 						}
@@ -897,7 +899,7 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 			int interiormines = 0;
 			// TODO: calculate this info, but instead of just averaging it, export it to a separate file
 			// solver progress / estimated mines / actual mines
-			// somehow incorporate chain length? how hard is it to count the mines in each chain?
+			// somehow incorporate chain length? how hard is it to count the mines in each chain individually?
 			// TODO: eventually implement a "bias function" to correct for mis-estimating, probably depend on whole game progress, chain size, estimated mines
 			for (std::list<class cell *>::iterator cellit = interior_list.begin(); cellit != interior_list.end(); cellit++) {
 				if ((*cellit)->value == MINE)
@@ -915,21 +917,22 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 			interior_risk = (float(mygame.get_mines_remaining()) - border_allocation) / float(interior_list.size()) * 100.;
 		}
 
-	} // end of finding-likely-border-mine-allocation-to-determine-interior-risk section
+	} // end of "finding likely border mine allocation to determine interior risk" section
 
-	  // now, find risk for each border cell from the pods
-	  // step 10: iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
+	// now, find risk for each border cell from the pods
+	// step 10: iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
 	for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
 		float podrisk = podit->risk();
 		for (int i = 0; i < podit->cell_list.size(); i++) {
 			myriskholder.addrisk(podit->cell_list[i], podrisk);
 		}
 	}
-
-	// step 11: find the minimum risk from anything in the border cells (pods) and any cells with that risk
+	// find the minimum risk from anything in the border cells (pods) and any cells with that risk
+	// also clears/resets the myriskholder object for next time
 	std::pair<float, std::list<class cell *>> myriskreturn = myriskholder.findminrisk();
 
-	// step 12: decide between border and interior, call 'rand_from_list' and return
+
+	// step 11: decide between border and interior, call 'rand_from_list' and return
 	if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, interior_risk = %.3f, border_risk = %.3f\n", interior_risk, myriskreturn.first);
 	//if (interior_risk == 100.) {
 	//	// unlikely but plausible (note: if interior is empty, interior_risk will be set at 150)
@@ -960,25 +963,28 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 //		can have the recursion called on it (much faster this way). not sure what frequency it should rescan for chain integrity...
 // 'recursion_safety_valve' is set whenever it would return something resulting from 10k or more solutions, then from that point
 //		till the chain is done, it checks max 2 scenarios per level.
-struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) {
+struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain, bool use_perfectmode, bool use_endsolver) {
 	// step 0: are we done?
-	if (mychain.podlist.empty()) {
+	if (mychain->podlist.empty()) {
 		return podwise_return(0, 1);
-	} else if (mychain.podlist.size() == 1) {
-		int m = mychain.podlist.front().mines;
-		int c = comb_int(m, mychain.podlist.front().size());
+	} else if (mychain->podlist.size() == 1) {
+		// AFAIK this only happens if the initial top-level chain is a single pod. a pod that becomes disjoint in iteration should be handled in 3c.
+		// normalmode, endsolver: this is guaranteed to have multiple allocations, or else it would have been solved in singlecell logic
+		int m = mychain->podlist.front().mines;
+		int c = comb_int(m, mychain->podlist.front().size());
 		return podwise_return(m, c);
 	}
 
+	/*
 	// step 1: is it time to rescan the chain?
 	if (rescan_counter < CHAIN_RECHECK_DEPTH) {
 		rescan_counter++;
 	} else {
 		rescan_counter = 0;
-		int r = mychain.identify_chains();
+		int r = mychain->identify_chains();
 		if (r > 1) {
 			// if it has broken into 2 or more distinct chains, seperate them to operate recursively on each! much faster than the whole
-			std::vector<struct chain> chain_list = mychain.sort_into_chains(r, false); // where i'll be sorting them into
+			std::vector<struct chain> chain_list = mychain->sort_into_chains(r, false); // where i'll be sorting them into
 
 			// handle the multiple podwise_return objects, just sum their averages and total lengths
 			// NOTE: this same structure/method used at highest-level, when initially invoking the recursion
@@ -986,8 +992,7 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 			int effort_sum = 0;
 			int alloc_product = 1;
 			for (int s = 0; s < r; s++) {
-				struct podwise_return asdf = podwise_recurse(rescan_counter, chain_list[s]);
-				//asdf.validate();
+				struct podwise_return asdf = podwise_recurse(rescan_counter, &(chain_list[s]), use_perfectmode, use_endsolver);
 				sum += asdf.avg();
 				effort_sum += asdf.effort;
 				alloc_product *= asdf.total_alloc();
@@ -1001,19 +1006,19 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 		}
 		// if r == 1, then we're still in one contiguous chain. just continue as planned.
 	}
+	*/
 
-	// TODO: is it more efficient to go from the middle (rand) or go from one end (begin) ? results are the same, just a question of time
-	//int mainpodindex = 0;
-	int mainpodindex = rand() % mychain.podlist.size();
-	std::list<struct pod>::iterator temp = mychain.int_to_pod(mainpodindex);
+	std::list<struct pod>::iterator temp = mychain->podlist.begin();
 	// NOTE: if there are no link cells, then front() is disjoint! handle appropriately and recurse down, then return (no branching)
 	// AFAIK, this should never happen... top-level call on disjoint will be handled step 0, any disjoint created will be handled step 3c
 	if (temp->links.empty()) {
-		int f = temp->mines;
-		mychain.podlist.erase(temp);
-		struct podwise_return asdf = podwise_recurse(rescan_counter, mychain);
-		asdf += f;
-		return asdf;
+		myprintfn(2, "ERR: in smartguess recursion, this should have never happened\n");
+		assert(0);
+		//int f = temp->mines;
+		//mychain->podlist.erase(temp);
+		//struct podwise_return asdf = podwise_recurse(rescan_counter, mychain);
+		//asdf += f;
+		//return asdf;
 	}
 
 	// step 2: pick a pod, find all ways to saturate it
@@ -1022,7 +1027,10 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 	// NOTE: second-level optimization is eliminating redundant combinations of 'equivalent links', i.e. links that span the same pods
 	//       are interchangeable, and I don't need to test all combinations of them.
 	// list of lists of list-iterators which point at links in the link-list of front() (that's a mouthfull)
-	std::list<struct scenario> scenarios = temp->find_scenarios();
+
+	//TODO:	perfectmode needs to NOT use T2 scenario optimization, simply so I can get the data out. 
+	//		is there a way to detect the equiv links outside the scenario generator so i can know this while still reducing the recursive branching?
+	std::list<struct scenario> scenarios = temp->find_scenarios(!use_perfectmode);
 
 	// where results from each scenario recursion are accumulated
 	struct podwise_return retval = podwise_return();
@@ -1030,18 +1038,19 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 	for (std::list<struct scenario>::iterator scit = scenarios.begin(); scit != scenarios.end(); scit++) {
 		// for each scenario found above, make a copy of mychain, then...
 		int flagsthislvl = 0;
-		int allocsthislvl = scit->allocs;
+		int allocsthislvl = scit->allocs_encompassed;
 		std::list<class cell *> cellsflaggedthislvl;
-		struct chain copychain = mychain;
+		struct chain copychain = *mychain;
 		struct podwise_return asdf;
+		struct podwise_return lower;
 
 		// list of links that need to be removed from the chain; first is link, second is (true=flag, false=reveal)
 		std::list<std::pair<struct link, bool>> links_to_flag_or_clear;
 
-		std::list<struct pod>::iterator frontpod = copychain.int_to_pod(mainpodindex);
+		std::list<struct pod>::iterator frontpod = copychain.podlist.begin();
 		// step 3a: apply the changes according to the scenario by moving links from front() pod to links_to_flag_or_clear
-		for (std::list<std::list<struct link>::iterator>::iterator r = scit->roadmap.begin(); r != scit->roadmap.end(); r++) {
-			// turn iterator-over-iterator into just an iterator
+		for (std::list<std::list<struct link>::iterator>::iterator r = scit->scenario_links_to_flag.begin(); r != scit->scenario_links_to_flag.end(); r++) {
+			// turn iterator-over-list-of-iterators into just an iterator
 			std::list<struct link>::iterator linkit = *r;
 			// copy it from front().links to links_to_flag_or_clear as 'flag'...
 			links_to_flag_or_clear.push_back(std::pair<struct link, bool>(*linkit, true));
@@ -1057,8 +1066,9 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 			links_to_flag_or_clear.push_back(std::pair<struct link, bool>(*linkit, false));
 		}
 
-		// frontpod erases itself and increments by how many mines it has that aren't in the queue
-		flagsthislvl += frontpod->mines - scit->roadmap.size();
+		// frontpod erases itself and increments by how many mines it has that aren't in the scenario
+		// because it is being saturated, by definition it becomes disjoint
+		flagsthislvl += frontpod->mines - scit->scenario_links_to_flag.size();
 		copychain.podlist.erase(frontpod);
 
 
@@ -1066,29 +1076,29 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 		// there is high possibility of duplicate links being added to the list, but its handled just fine
 		// decided to run depth-first (stack) instead of width-first (queue) because of the "looping problem"
 		// NOTE: this is probably the most complex and delicate part of the whole MinesweeperSolver, the "looping problem" was 
-		//		a real bitch to solve and I can't quite remember WHY arranging it like this works. So, change at your own risk!
+		//		a real bitch to solve and I can't quite remember WHY arranging it like this works. So, don't change anything
+		//		that adds or removes from links_to_flag_or_clear!
 		while (!links_to_flag_or_clear.empty()) {
-			// for each link 'blinkit' to be flagged...
+			// for each link 'blink' to be handled...
 			std::pair<struct link, bool> blink = links_to_flag_or_clear.front();
 			links_to_flag_or_clear.pop_front();
 
 			class cell * sharedcell = blink.first.link_cell;
-			bool succesfullyflaggedandremovedlinkfromapod = false;
-			// ...go to every pod with a root 'rootit' referenced in 'linkitf' and remove the link from them!
+			bool thislinkwassuccesfullyflaggedandremovedfromapod = false;
+			// ...go to every pod with a root 'rootit' referenced in 'blink' and remove the link from them!
 			for (std::list<class cell *>::iterator rootit = blink.first.linked_roots.begin(); rootit != blink.first.linked_roots.end(); rootit++) {
 				std::list<struct pod>::iterator activepod = copychain.root_to_pod(*rootit);
 				if (activepod == copychain.podlist.end()) { continue; }
 				if (activepod->remove_link(sharedcell, blink.second)) { continue; } // if link wasn't found, just move on... will happen ALOT
-				succesfullyflaggedandremovedlinkfromapod = blink.second;
+				thislinkwassuccesfullyflaggedandremovedfromapod = blink.second;
 
 				// step 3c: after each change, see if activepod has become 100/0/disjoint/negative... if so, modify podlist and links_to_flag_or_clear
 				//		when finding disjoint, delete it and inc "flags this scenario" accordingly
 				//		when finding 100/0, store the link-cells, delete it, and inc "flags this scenario" accordingly
 				//		when finding pods with NEGATIVE risk, means that this scenario is invalid. simply GOTO after step 4, begin next scenario.
 
-				// NOTE: option 1, apply all the changes, then scan for any special cases and loop if there are any
-				//       option 2 (active): scan for special case after every link is removed
-				// neither one is guaranteed to be better or worse; it varies depending on # of links and interlinking vs # of pods in total
+				// after a link is removed from a pod, scan for 'special state' that needs handling
+				// add each of its links to the STACK if something happened that needs handling, and delete the pod in question
 				int r = activepod->scan();
 				switch (r) {
 				case 1: // risk is negative; initial scenario was invalid... just abort this scenario
@@ -1110,54 +1120,46 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain mychain) 
 						t.first.linked_roots.push_back(activepod->root);
 						links_to_flag_or_clear.push_front(t);
 					}
-					// inc by the non-link cells because the links will be placed later
-					//flagsthislvl += activepod->mines - activepod->links.size();
-					//copychain.podlist.erase(activepod);
+					// no inc because flagsthislvl is inced ONCE if a link is removed from any pods
 					break;
-				case 4: // DISJOINT
+				case 4: // DISJOINT, all its links have been consumed, only non-link cells remain
 					flagsthislvl += activepod->mines;
 					allocsthislvl *= comb_int(activepod->mines, activepod->size());
 					// allocsthislvl is only 1 if THIS pod has only 1 allocation AND all other things tried so far have only 1 allocation
 					// this pod only has 1 allocation IFF mines == size
-					if ((mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) \
-						&& (allocsthislvl == 1) && (activepod->mines > 0))
+					if (use_endsolver && (allocsthislvl == 1) && (activepod->mines > 0))
 						cellsflaggedthislvl.insert(cellsflaggedthislvl.end(), activepod->cell_list.begin(), activepod->cell_list.end());
 					copychain.podlist.erase(activepod);
 					break; // not needed, but whatever
 				}
 			} // end of iteration on shared_roots
-			if (succesfullyflaggedandremovedlinkfromapod) {
+			if (thislinkwassuccesfullyflaggedandremovedfromapod) {
 				flagsthislvl++;
-				if ((mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) && (allocsthislvl == 1))
+				if (use_endsolver && (allocsthislvl == 1))
 					cellsflaggedthislvl.push_back(sharedcell);
 			}
 		}// end of iteration on links_to_flag_or_clear
 
 		// step 4: recurse! when it returns, append to resultlist its value + how many flags placed in 3a/3b/3c
-		asdf = podwise_recurse(rescan_counter, copychain);
-		asdf += flagsthislvl; // inc the answer for each by how many flags placed this level
-		asdf *= allocsthislvl; // multiply the # allocations for this scenario into each
-		if ((mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN) && (allocsthislvl == 1))
-			asdf += cellsflaggedthislvl; // add these cells into the answer for each
+		lower = podwise_recurse(rescan_counter, &copychain, use_perfectmode, use_endsolver);
+		lower += flagsthislvl; // inc the answer for each by how many flags placed this level
+		lower *= allocsthislvl; // multiply the # allocations for this scenario into each
+		if (use_endsolver && (allocsthislvl == 1))
+			lower += cellsflaggedthislvl; // add these cells into the answer for each
 
-		retval += asdf; // append into the return list
+		retval += lower; // append into the return list
 
 		// if the safety valve has been activated, only try RECURSION_SAFE_WIDTH valid scenarios each level at most
-		if (recursion_safety_valve && (whichscenario >= RECURSION_SAFE_WIDTH)) {
-			break;
-		}
+		if (recursion_safety_valve && (whichscenario >= RECURSION_SAFE_WIDTH)) { break; }
 		whichscenario++; // don't want this to inc on an invalid scenario
 	LABEL_END_OF_THE_SCENARIO_LOOP:
 		int x = 5; // need to have something here or else the label/goto gets all whiney
 	}// end of iteration on the various ways to saturate frontpod
 
 
-	 // step 5: find the min of the mins and the max of the maxes; return them (or however else I want to combine answers)
-	 // perhaps I want to find the average of the mins and the average of the maxes? I'd have to change the struct to use floats then
+	// step 5: return the answer found by recursing on every level below this one
 
-	 // version 1: max of maxes and min of mins
-	 // version 2: averages
-	 // version 3: just return retval
+	// if I have spent too much effort calculating all the possibilities, then trip the safety valve
 	if (retval.effort > RECURSION_SAFETY_LIMITER)
 		recursion_safety_valve = true;
 

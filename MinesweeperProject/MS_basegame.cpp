@@ -365,7 +365,7 @@ inline int compare_two_cells(class cell * a, class cell * b) {
 }
 // if a goes before b, return true... needed for consistient sorting
 inline bool sort_by_position(class cell * a, class cell * b) {
-	if (compare_two_cells(a, b) < 0) { return true; } else { return false; }
+	return (compare_two_cells(a, b) < 0);
 }
 
 
