@@ -20,17 +20,31 @@ bool recursion_safety_valve = false; // if recursion goes down a rabbithole, sta
 
 solutionobj::solutionobj(float ans, int howmany) {
 	answer = ans; allocs_encompassed = howmany;
-	allocation = std::list<class cell *>(); // init as empty list
+	allocation.clear(); // init as empty list
 }
+aggregate_cell::aggregate_cell() {
+	me = NULL; times_flagged = 0; outof = 0;
+}
+aggregate_cell::aggregate_cell(class cell * newme) {
+	me = newme; times_flagged = 0; outof = 0;
+}
+aggregate_cell::aggregate_cell(class cell * newme, int newtf, int newof) {
+	me = newme; times_flagged = newtf; outof = newof;
+}
+float aggregate_cell::risk() {return (float(times_flagged) / float(outof));}
 
 
 podwise_return::podwise_return() { // construct empty
 	solutions.clear();
+	agg_info.clear();
 	effort = 0;
+	agg_allocs = 0;
 }
 podwise_return::podwise_return(float ans, int howmany) { // construct from one value, signifies end-of-branch
 	solutions = std::list<struct solutionobj>(1, solutionobj(ans, howmany));
+	agg_info.clear();
 	effort = 1;
+	agg_allocs = 0;
 }
 // obvious
 inline int podwise_return::size() { return solutions.size(); }
@@ -39,6 +53,20 @@ inline float podwise_return::efficiency() {
 	float t1 = float(effort) / float(total_alloc());
 	float t2 = 1. - t1;
 	if (t2 > 0.) { return t2; } else { return 0.; }
+}
+// podwise_return += cell pointer: append into all solutions
+inline struct podwise_return& podwise_return::operator+=( class cell * & addcell) {
+	for (std::list<struct solutionobj>::iterator listit = solutions.begin(); listit != solutions.end(); listit++) {
+		listit->allocation.push_back(addcell);
+	}
+	return *this;
+}
+// podwise_return += VECTOR of cell pointers: append into all solutions
+inline struct podwise_return& podwise_return::operator+=(const std::vector<class cell *>& addvect) {
+	for (std::list<struct solutionobj>::iterator listit = solutions.begin(); listit != solutions.end(); listit++) {
+		listit->allocation.insert(listit->allocation.end(), addvect.begin(), addvect.end());
+	}
+	return *this;
 }
 // podwise_return += list of cell pointers: append into all solutions
 inline struct podwise_return& podwise_return::operator+=(const std::list<class cell *>& addlist) {
@@ -50,17 +78,16 @@ inline struct podwise_return& podwise_return::operator+=(const std::list<class c
 // podwise_return *= int: multiply into all 'allocs_encompassed' in the list
 inline struct podwise_return& podwise_return::operator*=(const int& rhs) {
 	for (std::list<struct solutionobj>::iterator listit = solutions.begin(); listit != solutions.end(); listit++) { listit->allocs_encompassed *= rhs; }
+	// multiply into the values of each aggregate_cell object
+	agg_allocs *= rhs;
+	for (std::list<struct aggregate_cell>::iterator aggit = agg_info.begin(); aggit != agg_info.end(); aggit++) { 
+		aggit->times_flagged *= rhs; aggit->outof *= rhs;
+	}
 	return *this;
 }
 // podwise_return += int: increment all 'answers' in the list
 inline struct podwise_return& podwise_return::operator+=(const int& rhs) {
 	for (std::list<struct solutionobj>::iterator listit = solutions.begin(); listit != solutions.end(); listit++) { listit->answer += rhs; }
-	return *this;
-}
-// podwise_return += podwise_return: combine
-inline struct podwise_return& podwise_return::operator+=(struct podwise_return& rhs) {
-	solutions.insert(solutions.end(), rhs.solutions.begin(), rhs.solutions.end());
-	effort += rhs.effort;
 	return *this;
 }
 // return the WEIGHTED average of all the contents that are <= mines_remaining
@@ -140,7 +167,23 @@ int podwise_return::total_alloc() {
 	for (std::list<struct solutionobj>::iterator solit = solutions.begin(); solit != solutions.end(); solit++) { retval += solit->allocs_encompassed; }
 	return retval;
 }
-
+// search agg_info for the given cell; if there, inc the data. if not, add it in sorted order
+void podwise_return::add_aggregate(class cell * newcell, int times_flagged, int outof) {
+	// use the compare function to step through the list until i find the existing cell (or where it should be)
+	int r = 0;
+	for (std::list<struct aggregate_cell>::iterator pos = agg_info.begin(); pos != agg_info.end(); pos++) {
+		r = compare_two_cells(newcell, pos->me); // if a goes first, return negative
+		if (r < 0) {// insert
+			agg_info.insert(pos, aggregate_cell(newcell, times_flagged, outof)); return;
+		}
+		if (r == 0) {// combine
+			pos->outof += outof;
+			pos->times_flagged += times_flagged; return;
+		}
+	}
+	// if it falls out of the loop, then either list is empty or newcell should be added to end
+	agg_info.push_back(aggregate_cell(newcell, times_flagged, outof));
+}
 
 
 
@@ -190,6 +233,7 @@ void pod::add_link(class cell * shared, class cell * shared_root) {
 	}
 }
 // remove the link from this pod. return 0 if it worked, 1 if the link wasn't found
+// if the link in question is a flag, also reduces the 'mines' member
 int pod::remove_link(class cell * shared, bool isaflag) {
 	std::list<struct link>::iterator link_iter;
 	for (link_iter = links.begin(); link_iter != links.end(); link_iter++) {
@@ -225,10 +269,10 @@ std::list<struct scenario> pod::find_scenarios(bool use_t2_opt) {
 	// return a list of scenarios,
 	// where each scenario is a list of ITERATORS which point to my LINKS
 	std::list<struct scenario> retme;
-	// determine what values K to use, iterate over the range
-	int start = mines - (size() - links.size());
-	if (start < 0) { start = 0; } // greater of start or 0
-	int end = (mines < links.size() ? mines : links.size()); // lesser of mines/links
+	// determine the range of values K to use, how many cells to pick out of the links (because there will be variable mines in the non-link cells)
+	int start = max(0, mines - (size() - links.size())); // shouldn't be negative
+	int end = min(mines, links.size()); // lesser of mines/links
+
 	for (int i = start; i <= end; i++) {
 		// FIRST-TIER optimization: ignore actual allocation in non-link cells, just find all ways to put flags on link cells
 		// allocate some number of mines among the link cells
@@ -515,6 +559,9 @@ bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::
 bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
 	return (compare_list_of_scenarios(a, b) == 0);
 }
+inline int compare_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return compare_two_cells(a.me, b.me);}
+bool sort_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return (compare_aggregate_cell(a, b) < 0);}
+bool equivalent_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return (compare_aggregate_cell(a, b) == 0);}
 
 
 
@@ -808,19 +855,21 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 
 		// step 6: identify chains and sort the pods into a VECTOR of chains... 
 		int numchains = master_chain->identify_chains();
-		// normal case: turn "cell_list" into a simple number, and clear the actual list so it uses less memory while recursing
-		// near endsolver: don't eliminate the cell_list contents, let it remain a list
-		std::vector<struct chain> listofchains = master_chain->sort_into_chains(numchains, !use_endsolver);
+		// smartguess/normal: turn "cell_list" into a simple number, and clear the actual list so it uses less memory while recursing
+		// smartguess/endsolver: use cell_list to return non-link-cells sometimes
+		// perfectmode/normal: use cell_list because aggregate data is used even for the non-link-cells
+		// perfectmode/endsolver: use cell_list to return non-link-cells every time
+		std::vector<struct chain> listofchains = master_chain->sort_into_chains(numchains, !(use_endsolver || SMARTGUESS_USE_PERFECT_def));
 
-		// step 7: for each chain, recurse (depth, chain are only arguments) and get back list of answer allocations
+		// step 7: for each chain, recurse (depth, chain, mode are only arguments) and get back list of answer allocations
 		// handle the multiple podwise_retun objects, just sum their averages
 		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, # primary chains = %i \n", listofchains.size());
 		float border_allocation = 0;
 		std::vector<struct podwise_return> retholder = std::vector<struct podwise_return>(numchains, podwise_return());
 		for (int s = 0; s < listofchains.size(); s++) {
 			recursion_safety_valve = false; // reset the flag for each chain
-			struct podwise_return asdf = podwise_recurse(0, &(listofchains[s]), false, use_endsolver);
-			// TODO: make perfectmode conditional on stuff
+			struct podwise_return asdf = podwise_recurse(0, &(listofchains[s]), use_endsolver);
+			// TODO: handle the perfectmode data when it returns
 			border_allocation += asdf.avg();
 			if (use_endsolver) { retholder[s] = asdf; }
 
@@ -958,21 +1007,91 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 }
 
 
+// idea for 'aggregate data'
+// for each cell, track "times it was flagged" vs "total times used"
+// for flag, call add(1,1)
+// for clear, call add(0,1)
+// for disjoint/nonlink cells, if there are 2 mines in 4 cells, do the following
+//		temp *= choose 2 from 4, or whatever
+//		smartguess_return *= temp (mult into agg_allocs and also any agg_info entries that already exist)
+//		add( cell, agg_allocs * mines/size , agg_allocs )
+// in the end, EVERY cell should have the same sum of flags+clears, both link-cells and non-link-cells, top-level and down deep
+
+
+
+
+/*
+need to create a new podwise_return object before doing "this level" operations, to hold the results of "this level"
+	roll 3 separate varaibles into it, + aggregate data
+need to clean up & make transparent how "this level" is combined(VERTICALLY) with result from levels below 
+	'flagsthislvl' added to answer value for each solution returned from below
+	'allocsthislvl' multiplied into allocs_encompassed for each solution returned from below
+	'cellsthislvl' appended to allocation for each solution returned from below
+	mult my agg_allocs into it, mult its agg_allocs into me, then merge lists (there will not be anything to collapse here)
+	NOTE: smartguess/endsolver will build only one 'solution', will only record cells that are links and are part of a solution with only one allocation (kinda crappy)
+	NOTE: perfectmode/endsolver will build multiple 'lists of solutions', need to be 'convoluted/multiplied' into the solutions from below
+need to clean up & make transparent how "this level + below" are combined(HORIZONTALLY) with eachother to make retval 
+	answers list is appended
+	effort is combined
+	agg_allocs is summed
+	agg_info: merge lists and collapse entries (note: collapsing could be done all at once, just before returning?)
+REMEMBER the venn diagram of how it fits together!!
+	perfectmode/normal encompasses smartguess/normal
+	perfectmode/endsolver encompases smartguess/endsolver encompasses smartguess/normal
+*/
+
+// TODO: maybe after 'outof' member is removed, function will be add(cell, thislvl.agg_allocs/0/agg_allocs*ratio). yeah!
+
+
 // recursively operates on a interconnected 'chain' of pods, and returns the list of all allocations it can find.
-// 'rescan_counter' will periodically check that the chain is still completely interlinked; if it has divided, then each section
-//		can have the recursion called on it (much faster this way). not sure what frequency it should rescan for chain integrity...
 // 'recursion_safety_valve' is set whenever it would return something resulting from 10k or more solutions, then from that point
 //		till the chain is done, it checks max 2 scenarios per level.
-struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain, bool use_perfectmode, bool use_endsolver) {
+// smartguess/normal: returns list of solutionvalues w/ weights
+// smartguess/endsolver: returns reduced/compressed/simplified roadmaps for the solutions + list of solutionvalues w/ weights
+// perfectmode/normal: returns aggregate data for each cell in the chain + list of solutionvalues w/ weights
+// perfectmode/endsolver: returns exhaustive list of all roadmaps, WAY more memory usage, dont even worry about optimizing it
+//		^ don't store/calculate aggregate data, synthesize the data after step 8 because step 8 will eliminate some of the solutions
+struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain, bool use_endsolver) {
 	// step 0: are we done?
 	if (mychain->podlist.empty()) {
-		return podwise_return(0, 1);
+		// this should be the "normal" end of the recursive branch, set 'effort' to 1
+		struct podwise_return r = podwise_return(0, 1);
+		if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) { r.agg_allocs = 1; }
+		return r;
 	} else if (mychain->podlist.size() == 1) {
 		// AFAIK this only happens if the initial top-level chain is a single pod. a pod that becomes disjoint in iteration should be handled in 3c.
-		// normalmode, endsolver: this is guaranteed to have multiple allocations, or else it would have been solved in singlecell logic
+		// this is guaranteed to have multiple allocations(size > mines), or else it would have been solved in singlecell logic 
 		int m = mychain->podlist.front().mines;
-		int c = comb_int(m, mychain->podlist.front().size());
-		return podwise_return(m, c);
+		int s = mychain->podlist.front().size();
+		int c = comb_int(m, s);
+		if (!SMARTGUESS_USE_PERFECT_def) {
+			// smartguess/normal only cares about the answer; smartguess/endsolver wants the list of cells but can't use it because it is multiple allocs
+			return podwise_return(m, c);
+		} else if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) {
+			// perfecmode/normal: return the aggregate data
+			struct podwise_return r(m, c);
+			r.agg_allocs = c;
+			// for each cell in the pod, add its info
+			for (int i = 0; i < s; i++) {
+				r.add_aggregate(mychain->podlist.front().cell_list[i], r.agg_allocs * m / s, r.agg_allocs);
+			}
+			return r;
+		} else if (SMARTGUESS_USE_PERFECT_def && use_endsolver) {
+			// perfectmode, endsolver: return the exhaustive list of all solutions that satisfy this, each has allocs=1
+			struct podwise_return r;
+			r.solutions.resize(c, solutionobj(m, 1)); // now has correct # branches, just needs the actual cells
+			std::list<std::vector<int>> ret = comb(m, s);
+			// for each solution,
+			for (std::list<struct solutionobj>::iterator solit = r.solutions.begin(); solit != r.solutions.end(); solit++) {
+				// for each int in ret.front(),
+				for (int f = 0; f < ret.front().size(); f++) {
+					// use that int as index in cell_list and push to the end of the solution in question
+					solit->allocation.push_back(mychain->podlist.front().cell_list[ret.front()[f]]);
+				}
+				ret.pop_front();
+			}
+			return r;
+		}
 	}
 
 	/*
@@ -992,7 +1111,7 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain
 			int effort_sum = 0;
 			int alloc_product = 1;
 			for (int s = 0; s < r; s++) {
-				struct podwise_return asdf = podwise_recurse(rescan_counter, &(chain_list[s]), use_perfectmode, use_endsolver);
+				struct podwise_return asdf = podwise_recurse(rescan_counter, &(chain_list[s]), SMARTGUESS_USE_PERFECT_def, use_endsolver);
 				sum += asdf.avg();
 				effort_sum += asdf.effort;
 				alloc_product *= asdf.total_alloc();
@@ -1028,47 +1147,99 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain
 	//       are interchangeable, and I don't need to test all combinations of them.
 	// list of lists of list-iterators which point at links in the link-list of front() (that's a mouthfull)
 
-	//TODO:	perfectmode needs to NOT use T2 scenario optimization, simply so I can get the data out. 
-	//		is there a way to detect the equiv links outside the scenario generator so i can know this while still reducing the recursive branching?
-	std::list<struct scenario> scenarios = temp->find_scenarios(!use_perfectmode);
+	// perfectmode needs to NOT use T2 scenario optimization, simply so I can get the data out. 
+	//TODO:	is there a way to detect the equiv links outside the scenario generator so i can know this while still reducing the recursive branching?
+	std::list<struct scenario> scenarios = temp->find_scenarios(!SMARTGUESS_USE_PERFECT_def);
 
 	// where results from each scenario recursion are accumulated
 	struct podwise_return retval = podwise_return();
 	int whichscenario = 1; // int to count how many scenarios i've tried
 	for (std::list<struct scenario>::iterator scit = scenarios.begin(); scit != scenarios.end(); scit++) {
 		// for each scenario found above, make a copy of mychain, then...
-		int flagsthislvl = 0;
-		int allocsthislvl = scit->allocs_encompassed;
-		std::list<class cell *> cellsflaggedthislvl;
-		struct chain copychain = *mychain;
-		struct podwise_return asdf;
-		struct podwise_return lower;
+		struct podwise_return thislvl(0,1); // create PR with one entry, holds everything found thislvl
+		thislvl.effort = 0; // this does not represent a 'leaf' so it must be 0
+
+		thislvl.solutions.front().answer = 0;	// holds the # of flags placed this lvl; inc with thislvl += 1, works even if branched
+		// represents how many allocations are possible that reach this specific answer thislvl
+		thislvl.solutions.front().allocs_encompassed = scit->allocs_encompassed;
+		// if perfectmode/normal, using aggregate data, and must initialize this value
+		if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) { thislvl.agg_allocs = scit->allocs_encompassed; } 
+		// dont need to declare or init this, it just exists already; holds all cells flagged as part of this solution
+		//thislvl.solutions.front().allocation; 
+
+		struct chain copychain = *mychain; // a copy of the chain that i can modify, and then pass to deeper recursion
+		// lower needs to be declared here because 'goto' and labels are weird :/
+		struct podwise_return lower; // will receive PR object from deeper recursion
 
 		// list of links that need to be removed from the chain; first is link, second is (true=flag, false=reveal)
 		std::list<std::pair<struct link, bool>> links_to_flag_or_clear;
 
-		std::list<struct pod>::iterator frontpod = copychain.podlist.begin();
+		std::list<struct pod>::iterator frontpod = copychain.podlist.begin(); // self-explanatory
 		// step 3a: apply the changes according to the scenario by moving links from front() pod to links_to_flag_or_clear
 		for (std::list<std::list<struct link>::iterator>::iterator r = scit->scenario_links_to_flag.begin(); r != scit->scenario_links_to_flag.end(); r++) {
 			// turn iterator-over-list-of-iterators into just an iterator
 			std::list<struct link>::iterator linkit = *r;
 			// copy it from front().links to links_to_flag_or_clear as 'flag'...
 			links_to_flag_or_clear.push_back(std::pair<struct link, bool>(*linkit, true));
-			// I really wanted to use "erase" here instead of "remove", oh well
-			// 'erase' = 'go here and delete object at this iterator', 'remove' = 'find and delete one that is identical to this'
-			// linkit is pointing at the link in the pod in the chain BEFORE I made a copy
-			// i made links before I made the copy because I found the 'equivalent links' before the copy
-			// ...and delete the original
-			frontpod->links.remove(*linkit);
+			// ...and delete the original from the list of links as well as the cell_list
+			frontpod->remove_link(linkit->link_cell, true);
 		}
 		// then copy all remaining links to links_to_flag_or_clear as 'clear'
 		for (std::list<link>::iterator linkit = frontpod->links.begin(); linkit != frontpod->links.end(); linkit++) {
 			links_to_flag_or_clear.push_back(std::pair<struct link, bool>(*linkit, false));
+			if (SMARTGUESS_USE_PERFECT_def) {
+				// for perfectmode, i need to delete all links from the cell_list so only non-links remain
+				int s = frontpod->cell_list.size();
+				for (int i = 0; i < s; i++) {
+					if (frontpod->cell_list[i] == linkit->link_cell) {
+						// when found, delete it by copying the end onto it
+						if (i != (s - 1)) { frontpod->cell_list[i] = frontpod->cell_list.back(); }
+						frontpod->cell_list.pop_back();
+						break;
+					}
+				}
+			}
 		}
 
+
+		// NOTE: all of these blocks depend on mines/cell_list/size being correct after moving links from the pod to the queue
 		// frontpod erases itself and increments by how many mines it has that aren't in the scenario
 		// because it is being saturated, by definition it becomes disjoint
-		flagsthislvl += frontpod->mines - scit->scenario_links_to_flag.size();
+		thislvl += frontpod->mines; // add flags for the non-link cells to all solutions this level
+
+		// smartguess/normal: do nothing extra
+		if (!SMARTGUESS_USE_PERFECT_def && use_endsolver) {
+			// smartguess/endsolver: will only have 1 solution, only add if allocs_encompassed = 1 (includes req that mines=size), only add if mines=size>0
+			if ((thislvl.solutions.front().allocs_encompassed == 1) && (frontpod->mines > 0)) {
+				thislvl += frontpod->cell_list;
+			}
+		} else if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) { 
+			// if perfectmode/normal,
+			// dont need to calculate c or multiply thru thislvl, already set above...
+			// for each cell remaining in the pod, add its info
+			for (int i = 0; i < frontpod->size(); i++) {
+				thislvl.add_aggregate(frontpod->cell_list[i], thislvl.agg_allocs * frontpod->mines / frontpod->size(), thislvl.agg_allocs);
+			}
+		} else if (SMARTGUESS_USE_PERFECT_def && use_endsolver) {
+			// if perfectmode/endsolver, 
+			// set allocs_encompassed to 1, iterate over the non-link cells and branch into several solutions inside thislvl
+			// need to branch here, but don't need to convolute... guaranteed that thislvl has exactly 1 solution going into this block
+			int m = frontpod->mines; int s = frontpod->size(); int c = scit->allocs_encompassed;
+
+			thislvl.solutions.front().allocs_encompassed = 1; // will be copied 
+			thislvl.solutions.resize(c, thislvl.solutions.front()); // now its the right size, just needs the actual cells
+			std::list<std::vector<int>> ret = comb(m, s);
+			// for each solution,
+			for (std::list<struct solutionobj>::iterator solit = thislvl.solutions.begin(); solit != thislvl.solutions.end(); solit++) {
+				// for each int in ret.front(),
+				for (int f = 0; f < ret.front().size(); f++) {
+					// use that int as index in cell_list and push to the end of the solution in question
+					solit->allocation.push_back(frontpod->cell_list[ret.front()[f]]);
+				}
+				ret.pop_front();
+			}
+		}
+
 		copychain.podlist.erase(frontpod);
 
 
@@ -1085,12 +1256,14 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain
 
 			class cell * sharedcell = blink.first.link_cell;
 			bool thislinkwassuccesfullyflaggedandremovedfromapod = false;
+			bool thislinkwassuccesfullyclearedandremovedfromapod = false;
 			// ...go to every pod with a root 'rootit' referenced in 'blink' and remove the link from them!
 			for (std::list<class cell *>::iterator rootit = blink.first.linked_roots.begin(); rootit != blink.first.linked_roots.end(); rootit++) {
 				std::list<struct pod>::iterator activepod = copychain.root_to_pod(*rootit);
 				if (activepod == copychain.podlist.end()) { continue; }
 				if (activepod->remove_link(sharedcell, blink.second)) { continue; } // if link wasn't found, just move on... will happen ALOT
 				thislinkwassuccesfullyflaggedandremovedfromapod = blink.second;
+				thislinkwassuccesfullyclearedandremovedfromapod = !blink.second; // I think this will work? not certain
 
 				// step 3c: after each change, see if activepod has become 100/0/disjoint/negative... if so, modify podlist and links_to_flag_or_clear
 				//		when finding disjoint, delete it and inc "flags this scenario" accordingly
@@ -1116,38 +1289,147 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain
 					for (std::list<link>::iterator linkit = activepod->links.begin(); linkit != activepod->links.end(); linkit++) {
 						std::pair<struct link, bool> t(*linkit, true);
 						// need to add myself to the link so i will be looked at later and determined to be disjoint
-						// hopefully fixes the looping-problem!
+						// hopefully fixes the looping-problem! IT DOES!
 						t.first.linked_roots.push_back(activepod->root);
 						links_to_flag_or_clear.push_front(t);
 					}
 					// no inc because flagsthislvl is inced ONCE if a link is removed from any pods
 					break;
 				case 4: // DISJOINT, all its links have been consumed, only non-link cells remain
-					flagsthislvl += activepod->mines;
-					allocsthislvl *= comb_int(activepod->mines, activepod->size());
-					// allocsthislvl is only 1 if THIS pod has only 1 allocation AND all other things tried so far have only 1 allocation
-					// this pod only has 1 allocation IFF mines == size
-					if (use_endsolver && (allocsthislvl == 1) && (activepod->mines > 0))
-						cellsflaggedthislvl.insert(cellsflaggedthislvl.end(), activepod->cell_list.begin(), activepod->cell_list.end());
+					thislvl += activepod->mines; // add flags to all solutions this level
+					int c = comb_int(activepod->mines, activepod->size());
+
+					// need to do wildly different things depending on mode of operation:
+					if (!SMARTGUESS_USE_PERFECT_def && !use_endsolver) {
+						thislvl *= c; // multiply in the multiple allocations
+					} else if (!SMARTGUESS_USE_PERFECT_def && use_endsolver) {
+						// smartguess/endsolver: will only have 1 solution, only add if allocs_encompassed = 1 (includes req that mines=size), only add if mines=size>0
+						thislvl *= c; // multiply in the multiple allocations
+						if ((thislvl.solutions.front().allocs_encompassed == 1) && (activepod->mines > 0)) {
+							thislvl += activepod->cell_list;
+						}
+					} else if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) {
+						// perfectmode/normal: multiply into agg_allocs and add aggregate info
+						thislvl *= c; // multiply in the multiple allocations
+						// for each cell remaining in the pod, add its info
+						for (int i = 0; i < activepod->size(); i++) {
+							thislvl.add_aggregate(activepod->cell_list[i], thislvl.agg_allocs * activepod->mines / activepod->size(), thislvl.agg_allocs);
+						}
+					} else if (SMARTGUESS_USE_PERFECT_def && use_endsolver) {
+						// perfectmode/endsolver: assume multiple branches exist, create more here, don't mult allocs_encompassed thru (force it to be 1)
+						// branching is done by copying thislvl, adding different cells to each copy, then recombining them
+
+						std::list<struct podwise_return> copyholder(c, thislvl); // need to make 'c' copies
+
+						std::list<std::vector<int>> ret = comb(activepod->mines, activepod->size()); // identify the many ways to put mines in the non-link cells
+						// each podwise_return object uses one entry from 'ret', the front() one
+						for (std::list<struct podwise_return>::iterator prit = copyholder.begin(); prit != copyholder.end(); prit++) {
+							// for each int in ret.front(),
+							for (int f = 0; f < ret.front().size(); f++) {
+								// use that int as index in cell_list and push to the end of the solution in question
+								*prit += activepod->cell_list[ret.front()[f]];
+							}
+							ret.pop_front();
+							// now that this copy has been modified, append it onto the first one!
+							if (prit != copyholder.begin()) {
+								copyholder.front().solutions.splice(copyholder.front().solutions.begin(), prit->solutions);
+							}
+						}
+						// FINALLY, put the new set of solutions (after creating the many branches) back into the proper place
+						thislvl.solutions = copyholder.front().solutions;
+					}
+
 					copychain.podlist.erase(activepod);
 					break; // not needed, but whatever
 				}
 			} // end of iteration on shared_roots
+
+			// now, deal with the actual link cell:
 			if (thislinkwassuccesfullyflaggedandremovedfromapod) {
-				flagsthislvl++;
-				if (use_endsolver && (allocsthislvl == 1))
-					cellsflaggedthislvl.push_back(sharedcell);
+				thislvl += 1; // add flags to all solutions this level
+				// smartguess/normal, do nothing extra
+				if (!SMARTGUESS_USE_PERFECT_def && use_endsolver) {
+					// smartguess/endsolver, only 1 solution exists, add to it only if there is only 1 allocation
+					if (thislvl.solutions.front().allocs_encompassed == 1) {
+						thislvl += sharedcell;
+					}
+				} else if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) {
+					// perfectmode/normal, add to aggregate data as flagged
+					thislvl.add_aggregate(sharedcell, thislvl.agg_allocs, thislvl.agg_allocs);
+				} else if (SMARTGUESS_USE_PERFECT_def && use_endsolver) {
+					// perfectmode/endsolver, assume multiple branches exist, add this onto all
+					thislvl += sharedcell;
+				}
+			} else if (thislinkwassuccesfullyclearedandremovedfromapod) {
+				// add to aggregate data as cleared
+				if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) {
+					thislvl.add_aggregate(sharedcell, 0, thislvl.agg_allocs);
+				}
 			}
 		}// end of iteration on links_to_flag_or_clear
 
-		// step 4: recurse! when it returns, append to resultlist its value + how many flags placed in 3a/3b/3c
-		lower = podwise_recurse(rescan_counter, &copychain, use_perfectmode, use_endsolver);
-		lower += flagsthislvl; // inc the answer for each by how many flags placed this level
-		lower *= allocsthislvl; // multiply the # allocations for this scenario into each
-		if (use_endsolver && (allocsthislvl == 1))
-			lower += cellsflaggedthislvl; // add these cells into the answer for each
+		// step 4: recurse! when it returns, combine the 'lower' info with 'thislvl' info (VERTICAL combining)
+		lower = podwise_recurse(rescan_counter, &copychain, use_endsolver);
+		
+		//need to clean up & make transparent how "this level" is combined(VERTICALLY) with result from levels below 
+		//	'flagsthislvl' added to answer value for each solution returned from below (except perfectmode/endsolver)
+		//	'allocsthislvl' multiplied into allocs_encompassed for each solution returned from below (except perfectmode/endsolver)
+		//	mult my agg_allocs into it, mult its agg_allocs into me, then merge lists (?) (there will not be anything to collapse here)
+		//	'cellsthislvl' appended to allocation for each solution returned from below (except perfectmode/endsolver)
+		//	NOTE: smartguess/endsolver will build only one 'solution', will only record cells that are links and are part of a solution with only one allocation (kinda crappy)
+		//	NOTE: perfectmode/endsolver will build 'lists of solutions', need to be 'multiplied' into the solutions from below
+		
+		if (SMARTGUESS_USE_PERFECT_def && use_endsolver) {
+			// must convolute: multiply lower w/ multiple solutions * thislvl w/ multiple solutions
+			// but all thislvl have the same answer# i'm pretty sure, and all have only 1 alloc
+			// resulting answer is in lower
 
-		retval += lower; // append into the return list
+			// make s copies of lower, then each copy gets one solution from thislvl, then roll them all into one
+			std::list<struct podwise_return> copyholder(thislvl.solutions.size(), lower); // need to make 's' copies
+			// each podwise_return object uses one entry from 'thislvl.solutions'
+			std::list<struct solutionobj>::iterator solit = thislvl.solutions.begin();
+			for (std::list<struct podwise_return>::iterator prit = copyholder.begin(); prit != copyholder.end(); prit++) {
+				*prit += solit->answer; // add the number of flags placed to each solution in the copy
+				*prit += solit->allocation; // add the actual list of cells to each solution in the copy
+				solit++; // move to the next solution from thislvl
+				// now that this copy has been modified, append it onto the first one!
+				if (prit != copyholder.begin()) {
+					copyholder.front().solutions.splice(copyholder.front().solutions.begin(), prit->solutions);
+				}
+			}
+			// FINALLY, put the new set of solutions (after creating the many branches) back into the proper place
+			lower.solutions = copyholder.front().solutions;
+		} else {
+			// all 3 modes use this
+			lower += int(thislvl.solutions.front().answer); // inc the answer for each by how many flags placed this level
+			if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) {
+				//perfectmode/normal, lower *= allocs, thislvl *= lower(before mult), merge aggregate data
+				int t = lower.agg_allocs;
+				lower *= thislvl.agg_allocs;
+				thislvl *= t; // cross-multiply into eachother
+				lower.agg_info.merge(thislvl.agg_info, sort_aggregate_cell); // merge
+			} else {
+				//smartguess/normal, lower *= allocs //smartguess/endsolver, lower *= allocs
+				lower *= thislvl.solutions.front().allocs_encompassed; // multiply the # allocations for this scenario into each
+			}
+			if (!SMARTGUESS_USE_PERFECT_def && use_endsolver && (thislvl.solutions.front().allocs_encompassed == 1)) {
+				lower += thislvl.solutions.front().allocation; // add these cells into the answer for each
+			}
+		}
+
+
+
+		// step 5: combine the 'lower' info into 'retval', (HORIZONTAL combining)
+		//need to clean up & make transparent how "this level + below" are combined(HORIZONTALLY) with eachother to make retval 
+		//	solutions list is appended
+		//	effort is combined
+		//  agg_allocs is combined
+		//	NO MULTIPLY, just merge lists (note: collapsing is done all at once, just before returning)
+
+		retval.effort += lower.effort;
+		retval.agg_allocs += lower.agg_allocs;
+		retval.agg_info.merge(lower.agg_info, sort_aggregate_cell); // merge
+		retval.solutions.splice(retval.solutions.end(), lower.solutions); // append list of solutions
 
 		// if the safety valve has been activated, only try RECURSION_SAFE_WIDTH valid scenarios each level at most
 		if (recursion_safety_valve && (whichscenario >= RECURSION_SAFE_WIDTH)) { break; }
@@ -1157,12 +1439,27 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain
 	}// end of iteration on the various ways to saturate frontpod
 
 
-	// step 5: return the answer found by recursing on every level below this one
-
+	// step 6: return the answer found by recursing on every level below this one
+	// before returning, need to collapse/combine aggregate info entries that represent the same cell
+	// retval isn't actually valid until after this
+	if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) {
+		if (retval.agg_info.size() >= 2) {
+			std::list<struct aggregate_cell>::iterator a = retval.agg_info.begin();
+			std::list<struct aggregate_cell>::iterator b = a; a++; // b points to 0, a points to 1
+			while (a != retval.agg_info.end()) {
+				if (equivalent_aggregate_cell(*a, *b)) {
+					// combine a into b
+					b->times_flagged += a->times_flagged;
+					b->outof += a->outof;
+					a = retval.agg_info.erase(a); // both delete a and advance
+				} else {
+					a++; b++;
+				}
+			}
+		}
+	}
 	// if I have spent too much effort calculating all the possibilities, then trip the safety valve
-	if (retval.effort > RECURSION_SAFETY_LIMITER)
-		recursion_safety_valve = true;
-
+	if (retval.effort > RECURSION_SAFETY_LIMITER) { recursion_safety_valve = true; }
 	return retval;
 }
 

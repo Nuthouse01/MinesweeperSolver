@@ -14,6 +14,8 @@
 #include <cassert> // so it aborts when something wierd happens (but its optimized away in 'release' mode)
 #include <algorithm> // for pod-based intelligent recursion
 #include <utility> // for 'pair' objects
+#include <Windows.h> // adds min() and max() macros
+
 
 
 
@@ -59,6 +61,23 @@ struct solutionobj {
 	std::list<class cell *> allocation; // cells to flag to apply this solution; may only be partial
 };
 
+// NOTE: could be a threeple, but its cleaner this way
+// used in 'perfectmode' to count how many times a cell is flagged
+// TODO: is there any point to having "allocs_encompassed" for each cell? it should always be the same across the board, right?
+//		first try it this way, then try reducing it
+struct aggregate_cell {
+	aggregate_cell();
+	aggregate_cell(class cell * newme);
+	aggregate_cell(class cell * newme, int newtf, int newof);
+
+	class cell * me;
+	int times_flagged;
+	int outof; // TODO: remove this after I verify its useless
+
+	float risk(); // TODO: after outof is removed, need to delete this?
+};
+
+
 // holds the list of all allocations found, as a struct for some extra utility
 // to combine the results of recursion on separate chains, average the results from each chain and sum them (pending any better idea)
 struct podwise_return {
@@ -67,11 +86,14 @@ struct podwise_return {
 
 	std::list<struct solutionobj> solutions; // list of all allocations found; unsorted, includes many duplicates
 	int effort; // represents # of solutions found, preserved even after .avg function
+	std::list<struct aggregate_cell> agg_info;
+	int agg_allocs;
 
+	inline struct podwise_return& operator+=( class cell * & addlist);
+	inline struct podwise_return& operator+=(const std::vector<class cell *>& addvect);
 	inline struct podwise_return& operator+=(const std::list<class cell *>& addlist);
 	inline struct podwise_return& operator*=(const int& rhs);
 	inline struct podwise_return& operator+=(const int& rhs);
-	inline struct podwise_return& operator+=(struct podwise_return& rhs);
 	inline int size();
 	inline float efficiency();
 	float avg();
@@ -79,7 +101,8 @@ struct podwise_return {
 	struct solutionobj * prmin();
 	float max_val();
 	float min_val();
-	int total_alloc();
+	int total_alloc(); // TODO: if 'perfectmode' aggregate data exists, use the size of one of them instead???
+	void add_aggregate(class cell * newcell, int times_flagged, int outof);
 };
 
 
@@ -173,6 +196,9 @@ bool sort_scenario_blind(std::list<struct link>::iterator a, std::list<struct li
 inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
 bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
 bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+inline int compare_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b);
+bool sort_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b);
+bool equivalent_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b);
 
 std::list<std::vector<int>> comb(int K, int N);
 inline int comb_int(int K, int N);
@@ -184,7 +210,7 @@ inline int factorial(int x);
 // functions for the recursive smartguess method(s)
 int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * thingsdone);
 int smartguess(struct chain * master_chain, struct game_stats * gstats, int * thingsdone);
-struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain, bool use_perfectmode, bool use_endsolver);
+struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain, bool use_endsolver);
 
 
 

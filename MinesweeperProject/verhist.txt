@@ -133,6 +133,10 @@ v4.11:	Begin trying to improve the smartguess method, will move to v5.0 when new
 		Smartguess recursion takes pointer to chain instead of actual chain; less mem on stack
 		Replaced most comparisons with the "endsolver threshold" with a boolean that is set once
 		Removed the "chain recheck" section
+		(git push)
+		Built infrastructure and functions needed for 'perfectmode'
+		Implemented 'perfectmode' in recursive function (TODO: DEBUG AND VERIFY)
+		(git push)
 		
 		
 TODO:
