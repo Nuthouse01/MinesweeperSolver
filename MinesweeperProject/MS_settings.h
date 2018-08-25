@@ -44,12 +44,12 @@ X/Y/mines
 #define TWOCELL_LOOP_CUTOFF		6
 //// in recursive function, after recursing X layers down, check to see if the chain is fragmented (almost certainly is)
 //// this should have no impact on the accuracy of the result, and testing has shown that over many games it has almost no impact on efficiency
-//// NOTE: this must be >= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN
+//// NOTE: this must be >= SMARTGUESS_ENDSOLVER_THRESHOLD_def
 //#define CHAIN_RECHECK_DEPTH			8
 // when there are fewer than X mines on the field, begin storing the actual cells flagged to create each answer found by recursion
 // also attempt to solve the puzzle if there is exactly one perfect solution
 // NOTE: this must be <= CHAIN_RECHECK_DEPTH
-#define RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN	8
+#define SMARTGUESS_ENDSOLVER_THRESHOLD_def	8
 // in recursive function, after finding X solutions, stop being so thorough... only test RECURSION_SAFE_WIDTH scenarios at each lvl
 // this comes into play only very rarely even when set as high as 10k
 // with the limiter at 10k, the highest # of solutions found  is 51k, even then the algorithm takes < 1s

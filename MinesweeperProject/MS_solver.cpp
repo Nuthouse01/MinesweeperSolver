@@ -25,8 +25,8 @@ solutionobj::solutionobj(float ans, int howmany) {
 aggregate_cell::aggregate_cell() {
 	me = NULL; times_flagged = 0; outof = 0;
 }
-aggregate_cell::aggregate_cell(class cell * newme) {
-	me = newme; times_flagged = 0; outof = 0;
+aggregate_cell::aggregate_cell(class cell * newme, int newtf) {
+	me = newme; times_flagged = 0;
 }
 aggregate_cell::aggregate_cell(class cell * newme, int newtf, int newof) {
 	me = newme; times_flagged = newtf; outof = newof;
@@ -120,18 +120,18 @@ float podwise_return::avg() {
 	return (a / float(total_weight));
 }
 // max: if there is a tie, or the solution doesn't represent only one allocations, return pointer to NULL
-struct solutionobj * podwise_return::prmax() {
-	std::list<struct solutionobj>::iterator solit = solutions.begin();
-	std::list<struct solutionobj>::iterator maxit = solutions.begin(); // the one to return
-	bool tied_for_max = false;
-	for (solit++; solit != solutions.end(); solit++) {
-		if (solit->answer < maxit->answer) { continue; } // existing max is greater
-		if (solit->answer == maxit->answer) { tied_for_max = true; } // tied
-		else if (solit->answer > maxit->answer) { tied_for_max = false; maxit = solit; }
-	}
-	if (tied_for_max || (maxit->allocs_encompassed != 1)) { return NULL; } else { return &(*maxit); }
-}
-// max_val: if there is a tie, return a value anyway
+//struct solutionobj * podwise_return::prmax() {
+//	std::list<struct solutionobj>::iterator solit = solutions.begin();
+//	std::list<struct solutionobj>::iterator maxit = solutions.begin(); // the one to return
+//	bool tied_for_max = false;
+//	for (solit++; solit != solutions.end(); solit++) {
+//		if (solit->answer < maxit->answer) { continue; } // existing max is greater
+//		if (solit->answer == maxit->answer) { tied_for_max = true; } // tied
+//		else if (solit->answer > maxit->answer) { tied_for_max = false; maxit = solit; }
+//	}
+//	if (tied_for_max || (maxit->allocs_encompassed != 1)) { return NULL; } else { return &(*maxit); }
+//}
+// max_val: find the max 'answer' value from all the solutions in the PR object
 float podwise_return::max_val() {
 	float retmax = 0.;
 	for (std::list<struct solutionobj>::iterator solit = solutions.begin(); solit != solutions.end(); solit++) {
@@ -141,18 +141,18 @@ float podwise_return::max_val() {
 	return retmax;
 }
 // min: if there is a tie, or the solution doesn't represent only one allocations, return pointer to NULL
-struct solutionobj * podwise_return::prmin() {
-	std::list<struct solutionobj>::iterator solit = solutions.begin();
-	std::list<struct solutionobj>::iterator minit = solutions.begin(); // the one to return
-	bool tied_for_min = false;
-	for (solit++; solit != solutions.end(); solit++) {
-		if (solit->answer > minit->answer) { continue; } // existing min is lesser
-		if (solit->answer == minit->answer) { tied_for_min = true; } // tied
-		else if (solit->answer < minit->answer) { tied_for_min = false; minit = solit;}
-	}
-	if (tied_for_min || (minit->allocs_encompassed != 1)) { return NULL; } else { return &(*minit); }
-}
-// min_val: if there is a tie, return a value anyway
+//struct solutionobj * podwise_return::prmin() {
+//	std::list<struct solutionobj>::iterator solit = solutions.begin();
+//	std::list<struct solutionobj>::iterator minit = solutions.begin(); // the one to return
+//	bool tied_for_min = false;
+//	for (solit++; solit != solutions.end(); solit++) {
+//		if (solit->answer > minit->answer) { continue; } // existing min is lesser
+//		if (solit->answer == minit->answer) { tied_for_min = true; } // tied
+//		else if (solit->answer < minit->answer) { tied_for_min = false; minit = solit;}
+//	}
+//	if (tied_for_min || (minit->allocs_encompassed != 1)) { return NULL; } else { return &(*minit); }
+//}
+// min_val: find the min 'answer' value from all the solutions in the PR object
 float podwise_return::min_val() {
 	float retmin = 100000000.;
 	for (std::list<struct solutionobj>::iterator solit = solutions.begin(); solit != solutions.end(); solit++) {
@@ -177,12 +177,30 @@ void podwise_return::add_aggregate(class cell * newcell, int times_flagged, int 
 			agg_info.insert(pos, aggregate_cell(newcell, times_flagged, outof)); return;
 		}
 		if (r == 0) {// combine
+			myprintfn(2, "WARN: when adding agg cell info, merged into existing, should be impossible??\n");
 			pos->outof += outof;
 			pos->times_flagged += times_flagged; return;
 		}
 	}
 	// if it falls out of the loop, then either list is empty or newcell should be added to end
 	agg_info.push_back(aggregate_cell(newcell, times_flagged, outof));
+}
+void podwise_return::add_aggregate(class cell * newcell, float times_flagged) {
+	// use the compare function to step through the list until i find the existing cell (or where it should be)
+	int r = 0;
+	for (std::list<struct aggregate_cell>::iterator pos = agg_info.begin(); pos != agg_info.end(); pos++) {
+		r = compare_two_cells(newcell, pos->me); // if a goes first, return negative
+		if (r < 0) {// insert
+			agg_info.insert(pos, aggregate_cell(newcell, times_flagged * agg_allocs)); return;
+		}
+		if (r == 0) {// combine, should never happen?
+			myprintfn(2, "WARN: when adding agg cell info, merged into existing, should be impossible??\n");
+			pos->times_flagged += times_flagged * agg_allocs;
+			return;
+		}
+	}
+	// if it falls out of the loop, then either list is empty or newcell should be added to end
+	agg_info.push_back(aggregate_cell(newcell, times_flagged * agg_allocs));
 }
 
 
@@ -800,12 +818,189 @@ int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * things
 		*thingsdone += r;
 	}
 	for (std::list<class cell *>::iterator fit = flagme.begin(); fit != flagme.end(); fit++) { // flag-list
-		int r = mygame.set_flag(*fit);
-		(*thingsdone)++;
-		if (r == 1) { return 1; } // game won!
+int r = mygame.set_flag(*fit);
+(*thingsdone)++;
+if (r == 1) { return 1; } // game won!
 	}
 
 	return 0;
+}
+
+
+
+// smartguess: searches for chain solutions with only one allocation (unique) to apply
+// perfectmode: ^ plus, if non-unique solution is found, eliminate all other solutions to that chain
+//				^ plus, searches for chain solutions that are definitely invalid and eliminates them
+// return: 1=win/-1=loss/0=continue (cannot lose unless something is seriously out of whack)
+// but, it only causes smartguess to return to the main play_game level if this function adds to *thingsdone
+int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> * prvect, std::list<class cell *> * interior_list, int * thingsdone) {
+	/* ENDSOLVER uses the following logic:
+	1: for chain X in retholder, if max(X)+min(others) > mines_remain, then:
+		   anything in X with value max(X) is definitely an invalid solution. also, should check the next-biggest in X, and so on.
+	2: for chain X in retholder, if min(X)+max(others)+size(int) < mines_remain, then:
+		   anything in X with value min(X) is definitely an invalid solution. also, should check the next-smallest in X, and so on.
+	if a max is eliminated, check the minimums again. if a min is eliminated, check the maximums again.
+	at the end of this, if there is only 1 solution remaining, and it is unique, it can be applied!
+	3: if max(all)+size(int) == mines_remain, then:
+		   if any of these maximums are unique solutions, they can be applied. else, at least we know all non-maximum solutions are invalid
+	4: if  min(all)+0 == mines_remain, then:
+		   if any of these minimums are unique solutions, they can be applied. else, at least we know all non-minimum solutions are invalid
+   */
+
+	// NOTE: I want to keep track of how many solutions were elimiated out of how many total!
+	int num_sol_eliminated = 0, num_sol_start = 0;
+	for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
+		num_sol_start += priter->solutions.size();
+	}
+	int retval = 0; // win/loss/continue return value
+	int minesval = mygame.get_mines_remaining();
+
+	bool checkminimums = true, checkmaximums = true; // flags
+	do {
+		if (checkmaximums) {
+			checkmaximums = false;
+			//for each priter in prvect
+			for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
+				bool foundsomething = false;
+				do {
+					foundsomething = false;
+					// get the max of this one
+					int memax = priter->max_val();
+					// get the mins of all others
+					int othermin = 0;
+					for (std::vector<struct podwise_return>::iterator priter2 = prvect->begin(); priter2 != prvect->end(); priter2++) {
+						if (priter2 == priter) { continue; } else { othermin += priter2->min_val(); }
+					}
+					if ((memax + othermin) > minesval) {
+						if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: eliminated a solution for being too LARGE\n");
+						checkminimums = true; foundsomething = true;
+						//from priter, delete all solutions with value maxval()
+						//inc num_sol_eliminated accordingly
+						std::list<struct solutionobj>::iterator solit = priter->solutions.begin();
+						while (solit != priter->solutions.end()) {
+							if (solit->answer == memax) {
+								solit = priter->solutions.erase(solit); // delete and advance
+								num_sol_eliminated++;
+							} else { solit++; } // just advance
+						}
+					}
+				} while (foundsomething); // if something matched and was removed, then check again
+			}
+		}
+		if (checkminimums) {
+			checkminimums = false;
+			//for each priter in prvect
+			for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
+				bool foundsomething = false;
+				do {
+					foundsomething = false;
+					// get the min of this one
+					int memin = priter->min_val();
+					// get the maxes of all others
+					int othermax = 0;
+					for (std::vector<struct podwise_return>::iterator priter2 = prvect->begin(); priter2 != prvect->end(); priter2++) {
+						if (priter2 == priter) { continue; } else { othermax += priter2->max_val(); }
+					}
+					if ((memin + othermax + interior_list->size()) < minesval) {
+						if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: eliminated a solution for being too SMALL\n");
+						checkmaximums = true; foundsomething = true;
+						//from priter, delete all solutions with value minval()
+						//inc num_sol_eliminated accordingly
+						std::list<struct solutionobj>::iterator solit = priter->solutions.begin();
+						while (solit != priter->solutions.end()) {
+							if (solit->answer == memin) {
+								solit = priter->solutions.erase(solit); // delete and advance
+								num_sol_eliminated++;
+							} else { solit++; } // just advance
+						}
+					}
+				} while (foundsomething); // if something matched and was removed, then check again
+			}
+		}
+	} while (checkminimums || checkmaximums);
+
+	// if something was eliminated after this iterating,
+	if (num_sol_eliminated != 0) {
+		// for each PR object,
+		for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
+			// if this PR has only one solution remaining, and it is unique, that solution can be applied! unlikely but possible
+			if (((priter->solutions.size()) == 1) && (priter->solutions.front().allocs_encompassed == 1)) {
+				for (std::list<class cell *>::iterator celliter = priter->solutions.front().allocation.begin(); celliter != priter->solutions.front().allocation.end(); celliter++) {
+					*thingsdone += ((*celliter)->get_status() == UNKNOWN);
+					if (mygame.set_flag(*celliter) == 1) { retval = 1; }
+				}
+			}
+		}
+	}
+
+	// NOTE: if this successfully gets down to only 1 solution and applies it, then it will guaranteed be picked up below as well
+	// need to stop it from doublecounting and doubleincrementing *thingsdone
+
+	float minsum = 0; float maxsum = 0;
+	for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
+		minsum += priter->min_val(); maxsum += priter->max_val();
+	}
+	if (minsum == minesval) {
+		if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: determined using all MINIMUMS reaches the correct result\n");
+		// int_list is safe
+		for (std::list<class cell *>::iterator iiter = interior_list->begin(); iiter != interior_list->end(); iiter++) {
+			*thingsdone += 1;
+			if (mygame.reveal(*iiter) == -1) {
+				myprintfn(2, "ERR: Unexpected loss during smartguess chain-solve, must investigate!!\n"); assert(0); return -2;
+			} 
+		}
+		// for each PR object, 
+		for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
+			// find the minimum value
+			int minval = priter->min_val();
+			// delete any solutions that aren't that value, and inc num_sol_eliminated
+			std::list<struct solutionobj>::iterator solit = priter->solutions.begin();
+			while (solit != priter->solutions.end()) {
+				if (solit->answer != minval) {
+					solit = priter->solutions.erase(solit); // delete and advance
+					num_sol_eliminated++;
+				} else { solit++; } // just advance
+			}
+			// if this PR has only one solution remaining, and it is unique, that solution can be applied! unlikely but possible
+			if (((priter->solutions.size()) == 1) && (priter->solutions.front().allocs_encompassed == 1)) {
+				for (std::list<class cell *>::iterator celliter = priter->solutions.front().allocation.begin(); celliter != priter->solutions.front().allocation.end(); celliter++) {
+					*thingsdone += ((*celliter)->get_status() == UNKNOWN);
+					if (mygame.set_flag(*celliter) == 1) { retval = 1; }
+				}
+			}
+		}
+	} else if ((maxsum + interior_list->size()) == minesval) {
+		if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: determined using all MAXIMUMS reaches the correct result\n");
+		// int_list is all mines
+		for (std::list<class cell *>::iterator iiter = interior_list->begin(); iiter != interior_list->end(); iiter++) {
+			*thingsdone += ((*iiter)->get_status() == UNKNOWN);
+			if (mygame.set_flag(*iiter) == 1) { retval = 1; }
+		}
+		// for each PR object, 
+		for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
+			// find the maximum value
+			int maxval = priter->max_val();
+			// delete any solutions that aren't that value, and inc num_sol_eliminated
+			std::list<struct solutionobj>::iterator solit = priter->solutions.begin();
+			while (solit != priter->solutions.end()) {
+				if (solit->answer != maxval) {
+					solit = priter->solutions.erase(solit); // delete and advance
+					num_sol_eliminated++;
+				} else { solit++; } // just advance
+			}
+			// if this PR has only one solution remaining, and it is unique, that solution can be applied! unlikely but possible
+			if (((priter->solutions.size()) == 1) && (priter->solutions.front().allocs_encompassed == 1)) {
+				for (std::list<class cell *>::iterator celliter = priter->solutions.front().allocation.begin(); celliter != priter->solutions.front().allocation.end(); celliter++) {
+					*thingsdone += ((*celliter)->get_status() == UNKNOWN);
+					if (mygame.set_flag(*celliter) == 1) { retval = 1; }
+				}
+			}
+		}
+	}
+
+	if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: eliminated %i / %i solutions, %f\n", num_sol_eliminated, num_sol_start, 100. * float(num_sol_eliminated) / float(num_sol_start));
+
+	return retval;
 }
 
 
@@ -836,8 +1031,8 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 	}
 
 	float interior_risk = 150.;
+	bool use_endsolver = (mygame.get_mines_remaining() <= SMARTGUESS_ENDSOLVER_THRESHOLD_def);
 	// if there are no interior cells AND it is not near the endgame, then skip the recursion
-	bool use_endsolver = (mygame.get_mines_remaining() <= RETURN_ACTUAL_ALLOCATION_IF_THIS_MANY_MINES_REMAIN);
 	if (!interior_list.empty() || use_endsolver) {
 
 		// step 5: iterate again, building links to anything within 5x5(only set MY links)
@@ -871,7 +1066,7 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 			struct podwise_return asdf = podwise_recurse(0, &(listofchains[s]), use_endsolver);
 			// TODO: handle the perfectmode data when it returns
 			border_allocation += asdf.avg();
-			if (use_endsolver) { retholder[s] = asdf; }
+			if (use_endsolver || SMARTGUESS_USE_PERFECT_def) { retholder[s] = asdf; } // store the podwise_return obj for later analysis
 
 			if (ACTUAL_DEBUG || recursion_safety_valve) myprintfn(2, "DEBUG: in smart-guess, chain %i with %i pods found %i solutions\n", s, listofchains[s].podlist.size(), asdf.size());
 			if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, chain %i eliminated %.3f%% of allocations as redundant\n", s, (100. * asdf.efficiency()));
@@ -879,62 +1074,22 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		}
 
 
-		// step 8: if near the endgame, check if any solutions fit perfectly
-		// ENDSOLVER (conditions in which this runs need reconsideration)
+		// step 8: if near the endgame, run ENDSOLVER
+		// problem: each chain is solved independently, without regard for the total # of mines remaining to be placed or mines in other chains
+		// solution: checks if any solutions fit perfectly, if in perfectmode it also finds & eliminates any invalid solutions
 		// currently runs just if there are not many mines remaining, consider running if there are not many interior-list cells remaining??
-		// problem: each chain is solved independently, without regard for the total # of mines remaining to be placed
-		// solution: see if it solves the puzzle to flag each interior mine + flag max possible in each chain
-		// solution: see if it solves the puzzle to clear each interior mine + flag fewest posible in each chain
-		// solution: if there are 0? interior-list cells remaining, see if there are any allocations that produce an invalid total 
-		//			no matter what chains they are matched with?
 		if (use_endsolver) {
-			float minsum = 0; float maxsum = 0;
-			for (int a = 0; a < retholder.size(); a++) { minsum += retholder[a].min_val(); maxsum += retholder[a].max_val(); }
-			int retval = 0; // win/loss/continue return value
-			if (minsum == mygame.get_mines_remaining()) { // int_list is safe
-				for (std::list<class cell *>::iterator iiter = interior_list.begin(); iiter != interior_list.end(); iiter++) {
-					*thingsdone += 1;
-					if (mygame.reveal(*iiter) == -1) {
-						myprintfn(2, "ERR: Unexpected loss during smartguess chain-solve, must investigate!!\n"); assert(0);
-						return -2;
-					}
-				}
-				// for each chain, get the minimum solution object (if there is only one), and if it has only 1 allocation, then apply it as flags
-				for (int a = 0; a < numchains; a++) {
-					struct solutionobj * minsol = retholder[a].prmin();
-					if (minsol != NULL) {
-						for (std::list<class cell *>::iterator soliter = minsol->allocation.begin(); soliter != minsol->allocation.end(); soliter++) {
-							*thingsdone += 1;
-							if (mygame.set_flag(*soliter) == 1) { retval = 1; }
-						}
-					}
-				}
-			} else if ((maxsum + interior_list.size()) == mygame.get_mines_remaining()) { // int_list is all mines
-				for (std::list<class cell *>::iterator iiter = interior_list.begin(); iiter != interior_list.end(); iiter++) {
-					*thingsdone += 1;
-					if (mygame.set_flag(*iiter) == 1) { retval = 1; }
-				}
-				// for each chain, get the maximum solution object (if there is only one), and if it has only 1 allocation, then apply it
-				for (int a = 0; a < numchains; a++) {
-					struct solutionobj * maxsol = retholder[a].prmax();
-					if (maxsol != NULL) {
-						for (std::list<class cell *>::iterator soliter = maxsol->allocation.begin(); soliter != maxsol->allocation.end(); soliter++) {
-							*thingsdone += 1;
-							if (mygame.set_flag(*soliter) == 1) { retval = 1; }
-						}
-					}
-				}
-			}
+			int p = strat_endsolver_and_chain_reducer_logic(&retholder, &interior_list, thingsdone);
 			if (*thingsdone) {
 				if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, solved some chains!!\n");
-				return retval;
+				return p;
 			}
 		}
-
+		
+		// TODO: everything below here!
 
 
 		// step 9: calculate interior_risk, do statistics things
-
 		// calculate the risk of a mine in any 'interior' cell (they're all the same)
 		if (interior_list.empty()) {
 			interior_risk = 150.;
@@ -962,14 +1117,14 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 			////////////////////////////////////////////////////////////////////////
 
 
-			if (border_allocation > mygame.get_mines_remaining()) { border_allocation = mygame.get_mines_remaining(); }
+			border_allocation = min(border_allocation, mygame.get_mines_remaining()); // border_alloc must be <= mines_remaining
 			interior_risk = (float(mygame.get_mines_remaining()) - border_allocation) / float(interior_list.size()) * 100.;
 		}
 
 	} // end of "finding likely border mine allocation to determine interior risk" section
 
-	// now, find risk for each border cell from the pods
-	// step 10: iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
+	// step 10: calculate risk for the border cells and identify cells tied for minimum risk
+	// iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
 	for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
 		float podrisk = podit->risk();
 		for (int i = 0; i < podit->cell_list.size(); i++) {
@@ -1041,6 +1196,14 @@ REMEMBER the venn diagram of how it fits together!!
 */
 
 // TODO: maybe after 'outof' member is removed, function will be add(cell, thislvl.agg_allocs/0/agg_allocs*ratio). yeah!
+
+
+// IDEA: invert the 'answer' storage so it takes an int argument representing all mines placed in higher levels
+// if after applying a scenario (but before going deeper), 'above_answer' + thislvl_answer > mygame.get_mines_remaining(),
+// then don't recurse deeper and don't accumulate this scenario's data into the retval
+// also, if a deeper level of recursion returns an EMPTY pr object, that means all scenarios on the level below were invalid
+// in that case, there is no way for 'this' scenario to work, so 'this' scenario is invalid and not accumulated into retval
+
 
 
 // recursively operates on a interconnected 'chain' of pods, and returns the list of all allocations it can find.
