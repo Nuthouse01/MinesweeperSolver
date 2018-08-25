@@ -212,7 +212,7 @@ inline int factorial(int x);
 int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * thingsdone);
 int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> * prvect, std::list<class cell *> * interior_list, int * thingsdone);
 int smartguess(struct chain * master_chain, struct game_stats * gstats, int * thingsdone);
-struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain, bool use_endsolver);
+struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, struct chain * mychain, bool use_endsolver);
 
 
 

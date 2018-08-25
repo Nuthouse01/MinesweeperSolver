@@ -107,9 +107,8 @@ float podwise_return::avg() {
 			listit++;
 		} else {
 			// erase listit
-			std::list<struct solutionobj>::iterator eraseme = listit;
-			listit++;
-			solutions.erase(eraseme);
+			myprintfn(2, "well i guess i didn't fix that problem :(\n");
+			listit = solutions.erase(listit); // erase and advance
 		}
 	}
 	if (total_weight == 0) {
@@ -1063,7 +1062,7 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		std::vector<struct podwise_return> retholder = std::vector<struct podwise_return>(numchains, podwise_return());
 		for (int s = 0; s < listofchains.size(); s++) {
 			recursion_safety_valve = false; // reset the flag for each chain
-			struct podwise_return asdf = podwise_recurse(0, &(listofchains[s]), use_endsolver);
+			struct podwise_return asdf = podwise_recurse(0, 0, &(listofchains[s]), use_endsolver);
 			// TODO: handle the perfectmode data when it returns
 			border_allocation += asdf.avg();
 			if (use_endsolver || SMARTGUESS_USE_PERFECT_def) { retholder[s] = asdf; } // store the podwise_return obj for later analysis
@@ -1199,10 +1198,12 @@ REMEMBER the venn diagram of how it fits together!!
 
 
 // IDEA: invert the 'answer' storage so it takes an int argument representing all mines placed in higher levels
-// if after applying a scenario (but before going deeper), 'above_answer' + thislvl_answer > mygame.get_mines_remaining(),
+// after applying a scenario (but before going deeper), if 'above_answer' + thislvl_answer > mygame.get_mines_remaining(),
 // then don't recurse deeper and don't accumulate this scenario's data into the retval
+// else use 'above_answer' + thislvl_answer to recurse
 // also, if a deeper level of recursion returns an EMPTY pr object, that means all scenarios on the level below were invalid
 // in that case, there is no way for 'this' scenario to work, so 'this' scenario is invalid and not accumulated into retval
+// therefore, if(all scenarios at this lvl are invalid), then if(level above is invalid). and if(level above is invalid), return empty PR
 
 
 
@@ -1214,11 +1215,14 @@ REMEMBER the venn diagram of how it fits together!!
 // perfectmode/normal: returns aggregate data for each cell in the chain + list of solutionvalues w/ weights
 // perfectmode/endsolver: returns exhaustive list of all roadmaps, WAY more memory usage, dont even worry about optimizing it
 //		^ don't store/calculate aggregate data, synthesize the data after step 8 because step 8 will eliminate some of the solutions
-struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain, bool use_endsolver) {
+struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, struct chain * mychain, bool use_endsolver) {
 	// step 0: are we done?
-	if (mychain->podlist.empty()) {
+	if (mines_from_above > mygame.get_mines_remaining()) {
+		// means that the scenario above this is invalid; return a completely empty PR to signal this
+		return podwise_return();
+	} else if (mychain->podlist.empty()) {
 		// this should be the "normal" end of the recursive branch, set 'effort' to 1
-		struct podwise_return r = podwise_return(0, 1);
+		struct podwise_return r = podwise_return(mines_from_above, 1);
 		if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) { r.agg_allocs = 1; }
 		return r;
 	} else if (mychain->podlist.size() == 1) {
@@ -1531,69 +1535,72 @@ struct podwise_return podwise_recurse(int rescan_counter, struct chain * mychain
 			}
 		}// end of iteration on links_to_flag_or_clear
 
-		// step 4: recurse! when it returns, combine the 'lower' info with 'thislvl' info (VERTICAL combining)
-		lower = podwise_recurse(rescan_counter, &copychain, use_endsolver);
-		
-		//need to clean up & make transparent how "this level" is combined(VERTICALLY) with result from levels below 
-		//	'flagsthislvl' added to answer value for each solution returned from below (except perfectmode/endsolver)
-		//	'allocsthislvl' multiplied into allocs_encompassed for each solution returned from below (except perfectmode/endsolver)
-		//	mult my agg_allocs into it, mult its agg_allocs into me, then merge lists (?) (there will not be anything to collapse here)
-		//	'cellsthislvl' appended to allocation for each solution returned from below (except perfectmode/endsolver)
-		//	NOTE: smartguess/endsolver will build only one 'solution', will only record cells that are links and are part of a solution with only one allocation (kinda crappy)
-		//	NOTE: perfectmode/endsolver will build 'lists of solutions', need to be 'multiplied' into the solutions from below
-		
-		if (SMARTGUESS_USE_PERFECT_def && use_endsolver) {
-			// must convolute: multiply lower w/ multiple solutions * thislvl w/ multiple solutions
-			// but all thislvl have the same answer# i'm pretty sure, and all have only 1 alloc
-			// resulting answer is in lower
 
-			// make s copies of lower, then each copy gets one solution from thislvl, then roll them all into one
-			std::list<struct podwise_return> copyholder(thislvl.solutions.size(), lower); // need to make 's' copies
-			// each podwise_return object uses one entry from 'thislvl.solutions'
-			std::list<struct solutionobj>::iterator solit = thislvl.solutions.begin();
-			for (std::list<struct podwise_return>::iterator prit = copyholder.begin(); prit != copyholder.end(); prit++) {
-				*prit += solit->answer; // add the number of flags placed to each solution in the copy
-				*prit += solit->allocation; // add the actual list of cells to each solution in the copy
-				solit++; // move to the next solution from thislvl
-				// now that this copy has been modified, append it onto the first one!
-				if (prit != copyholder.begin()) {
-					copyholder.front().solutions.splice(copyholder.front().solutions.begin(), prit->solutions);
+		// step 4: recurse! when it returns, combine the 'lower' info with 'thislvl' info (VERTICAL combining)
+		// with first 3 modes, there is only one solutions entry thislvl; with perfectmode/endsolver, all solutions have the same answer value
+		lower = podwise_recurse(rescan_counter, (thislvl.solutions.front().answer + mines_from_above), &copychain, use_endsolver);
+		
+		// NOTE: if lower.solutions.empty(), that means that thislvl (this scenario) is invalid!!
+		// either this scenario directly places more mines than there are remaining in the game, or all branches that descend from this one
+		// place too many mines. 
+		if(!lower.solutions.empty()) {
+			//need to clean up & make transparent how "this level" is combined(VERTICALLY) with result from levels below 
+			//	'allocsthislvl' multiplied into allocs_encompassed for each solution returned from below (except perfectmode/endsolver)
+			//	mult my agg_allocs into it, mult its agg_allocs into me, then merge lists (?) (there will not be anything to collapse here)
+			//	'cellsthislvl' appended to allocation for each solution returned from below (except perfectmode/endsolver)
+
+			if (SMARTGUESS_USE_PERFECT_def && use_endsolver) {
+				// must convolute: multiply lower w/ multiple solutions * thislvl w/ multiple solutions
+				// but all thislvl have the same answer# i'm pretty sure, and all have only 1 alloc
+				// resulting answer is in lower
+
+				// make s copies of lower, then each copy gets one solution from thislvl, then roll them all into one
+				std::list<struct podwise_return> copyholder(thislvl.solutions.size(), lower); // need to make 's' copies
+				// each podwise_return object uses one entry from 'thislvl.solutions'
+				std::list<struct solutionobj>::iterator solit = thislvl.solutions.begin();
+				for (std::list<struct podwise_return>::iterator prit = copyholder.begin(); prit != copyholder.end(); prit++) {
+					//*prit += solit->answer; // add the number of flags placed to each solution in the copy
+					*prit += solit->allocation; // add the actual list of cells to each solution in the copy
+					solit++; // move to the next solution from thislvl
+					// now that this copy has been modified, append it onto the first one!
+					if (prit != copyholder.begin()) {
+						copyholder.front().solutions.splice(copyholder.front().solutions.begin(), prit->solutions);
+					}
+				}
+				// FINALLY, put the new set of solutions (after creating the many branches) back into the proper place
+				lower.solutions = copyholder.front().solutions;
+			} else {
+				// all 3 modes use this
+				//lower += int(thislvl.solutions.front().answer); // inc the answer for each by how many flags placed this level
+				if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) {
+					//perfectmode/normal, lower *= allocs, thislvl *= lower(before mult), merge aggregate data
+					int t = lower.agg_allocs;
+					lower *= thislvl.agg_allocs;
+					thislvl *= t; // cross-multiply into eachother
+					lower.agg_info.merge(thislvl.agg_info, sort_aggregate_cell); // merge
+				} else {
+					//smartguess/normal, lower *= allocs //smartguess/endsolver, lower *= allocs
+					lower *= thislvl.solutions.front().allocs_encompassed; // multiply the # allocations for this scenario into each
+				}
+				if (!SMARTGUESS_USE_PERFECT_def && use_endsolver && (thislvl.solutions.front().allocs_encompassed == 1)) {
+					lower += thislvl.solutions.front().allocation; // add these cells into the answer for each
 				}
 			}
-			// FINALLY, put the new set of solutions (after creating the many branches) back into the proper place
-			lower.solutions = copyholder.front().solutions;
-		} else {
-			// all 3 modes use this
-			lower += int(thislvl.solutions.front().answer); // inc the answer for each by how many flags placed this level
-			if (SMARTGUESS_USE_PERFECT_def && !use_endsolver) {
-				//perfectmode/normal, lower *= allocs, thislvl *= lower(before mult), merge aggregate data
-				int t = lower.agg_allocs;
-				lower *= thislvl.agg_allocs;
-				thislvl *= t; // cross-multiply into eachother
-				lower.agg_info.merge(thislvl.agg_info, sort_aggregate_cell); // merge
-			} else {
-				//smartguess/normal, lower *= allocs //smartguess/endsolver, lower *= allocs
-				lower *= thislvl.solutions.front().allocs_encompassed; // multiply the # allocations for this scenario into each
-			}
-			if (!SMARTGUESS_USE_PERFECT_def && use_endsolver && (thislvl.solutions.front().allocs_encompassed == 1)) {
-				lower += thislvl.solutions.front().allocation; // add these cells into the answer for each
-			}
+
+
+
+			// step 5: combine the 'lower' info into 'retval', (HORIZONTAL combining)
+			//need to clean up & make transparent how "this level + below" are combined(HORIZONTALLY) with eachother to make retval 
+			//	solutions list is appended
+			//	effort is combined
+			//  agg_allocs is combined
+			//	NO MULTIPLY, just merge lists (note: collapsing is done all at once, just before returning)
+
+			retval.effort += lower.effort;
+			retval.agg_allocs += lower.agg_allocs;
+			retval.agg_info.merge(lower.agg_info, sort_aggregate_cell); // merge
+			retval.solutions.splice(retval.solutions.end(), lower.solutions); // append list of solutions
 		}
-
-
-
-		// step 5: combine the 'lower' info into 'retval', (HORIZONTAL combining)
-		//need to clean up & make transparent how "this level + below" are combined(HORIZONTALLY) with eachother to make retval 
-		//	solutions list is appended
-		//	effort is combined
-		//  agg_allocs is combined
-		//	NO MULTIPLY, just merge lists (note: collapsing is done all at once, just before returning)
-
-		retval.effort += lower.effort;
-		retval.agg_allocs += lower.agg_allocs;
-		retval.agg_info.merge(lower.agg_info, sort_aggregate_cell); // merge
-		retval.solutions.splice(retval.solutions.end(), lower.solutions); // append list of solutions
-
 		// if the safety valve has been activated, only try RECURSION_SAFE_WIDTH valid scenarios each level at most
 		if (recursion_safety_valve && (whichscenario >= RECURSION_SAFE_WIDTH)) { break; }
 		whichscenario++; // don't want this to inc on an invalid scenario
