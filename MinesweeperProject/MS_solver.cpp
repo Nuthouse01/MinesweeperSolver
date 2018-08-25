@@ -287,7 +287,8 @@ std::list<struct scenario> pod::find_scenarios(bool use_t2_opt) {
 	// where each scenario is a list of ITERATORS which point to my LINKS
 	std::list<struct scenario> retme;
 	// determine the range of values K to use, how many cells to pick out of the links (because there will be variable mines in the non-link cells)
-	int start = max(0, mines - (size() - links.size())); // shouldn't be negative
+	int t = (mines - (size() - links.size()));
+	int start = max(0, t); // shouldn't be negative
 	int end = min(mines, links.size()); // lesser of mines/links
 
 	for (int i = start; i <= end; i++) {
@@ -847,7 +848,8 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
    */
 
 	// NOTE: I want to keep track of how many solutions were elimiated out of how many total!
-	int num_sol_eliminated = 0, num_sol_start = 0;
+	int checkminelim = 0, checkmaxelim = 0, checkallminelim = 0, checkallmaxelim = 0;
+	int num_sol_start = 0;
 	for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
 		num_sol_start += priter->solutions.size();
 	}
@@ -871,7 +873,6 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
 						if (priter2 == priter) { continue; } else { othermin += priter2->min_val(); }
 					}
 					if ((memax + othermin) > minesval) {
-						if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: eliminated a solution for being too LARGE\n");
 						checkminimums = true; foundsomething = true;
 						//from priter, delete all solutions with value maxval()
 						//inc num_sol_eliminated accordingly
@@ -879,7 +880,7 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
 						while (solit != priter->solutions.end()) {
 							if (solit->answer == memax) {
 								solit = priter->solutions.erase(solit); // delete and advance
-								num_sol_eliminated++;
+								checkmaxelim++;
 							} else { solit++; } // just advance
 						}
 					}
@@ -901,7 +902,6 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
 						if (priter2 == priter) { continue; } else { othermax += priter2->max_val(); }
 					}
 					if ((memin + othermax + interior_list->size()) < minesval) {
-						if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: eliminated a solution for being too SMALL\n");
 						checkmaximums = true; foundsomething = true;
 						//from priter, delete all solutions with value minval()
 						//inc num_sol_eliminated accordingly
@@ -909,7 +909,7 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
 						while (solit != priter->solutions.end()) {
 							if (solit->answer == memin) {
 								solit = priter->solutions.erase(solit); // delete and advance
-								num_sol_eliminated++;
+								checkminelim++;
 							} else { solit++; } // just advance
 						}
 					}
@@ -919,7 +919,7 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
 	} while (checkminimums || checkmaximums);
 
 	// if something was eliminated after this iterating,
-	if (num_sol_eliminated != 0) {
+	if (checkminelim || checkmaxelim) {
 		// for each PR object,
 		for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
 			// if this PR has only one solution remaining, and it is unique, that solution can be applied! unlikely but possible
@@ -940,7 +940,6 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
 		minsum += priter->min_val(); maxsum += priter->max_val();
 	}
 	if (minsum == minesval) {
-		if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: determined using all MINIMUMS reaches the correct result\n");
 		// int_list is safe
 		for (std::list<class cell *>::iterator iiter = interior_list->begin(); iiter != interior_list->end(); iiter++) {
 			*thingsdone += 1;
@@ -957,7 +956,7 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
 			while (solit != priter->solutions.end()) {
 				if (solit->answer != minval) {
 					solit = priter->solutions.erase(solit); // delete and advance
-					num_sol_eliminated++;
+					checkallminelim++;
 				} else { solit++; } // just advance
 			}
 			// if this PR has only one solution remaining, and it is unique, that solution can be applied! unlikely but possible
@@ -969,7 +968,6 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
 			}
 		}
 	} else if ((maxsum + interior_list->size()) == minesval) {
-		if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: determined using all MAXIMUMS reaches the correct result\n");
 		// int_list is all mines
 		for (std::list<class cell *>::iterator iiter = interior_list->begin(); iiter != interior_list->end(); iiter++) {
 			*thingsdone += ((*iiter)->get_status() == UNKNOWN);
@@ -984,7 +982,7 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
 			while (solit != priter->solutions.end()) {
 				if (solit->answer != maxval) {
 					solit = priter->solutions.erase(solit); // delete and advance
-					num_sol_eliminated++;
+					checkallmaxelim++;
 				} else { solit++; } // just advance
 			}
 			// if this PR has only one solution remaining, and it is unique, that solution can be applied! unlikely but possible
@@ -997,8 +995,15 @@ int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> *
 		}
 	}
 
-	if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: eliminated %i / %i solutions, %f\n", num_sol_eliminated, num_sol_start, 100. * float(num_sol_eliminated) / float(num_sol_start));
-
+	if (ACTUAL_DEBUG) {
+		// only print the appropriate message if something was actually eliminated
+		if (checkminelim) myprintfn(2, "ENDSOLVER: eliminated a solution for being too SMALL\n");
+		if (checkmaxelim) myprintfn(2, "ENDSOLVER: eliminated a solution for being too LARGE\n");
+		if (checkallminelim) myprintfn(2, "ENDSOLVER: determined using all MINIMUMS reaches the correct result\n");
+		if (checkallmaxelim) myprintfn(2, "ENDSOLVER: determined using all MAXIMUMS reaches the correct result\n");
+		int num_sol_eliminated = checkminelim + checkmaxelim + checkallminelim + checkallmaxelim;
+		if (num_sol_eliminated) myprintfn(2, "ENDSOLVER: eliminated %i / %i solutions, %f%%\n", num_sol_eliminated, num_sol_start, 100. * float(num_sol_eliminated) / float(num_sol_start));
+	}
 	return retval;
 }
 
@@ -1080,7 +1085,7 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		if (use_endsolver) {
 			int p = strat_endsolver_and_chain_reducer_logic(&retholder, &interior_list, thingsdone);
 			if (*thingsdone) {
-				if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, solved some chains!!\n");
+				if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: did something!!\n");
 				return p;
 			}
 		}
@@ -1354,7 +1359,7 @@ struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, 
 		// then copy all remaining links to links_to_flag_or_clear as 'clear'
 		for (std::list<link>::iterator linkit = frontpod->links.begin(); linkit != frontpod->links.end(); linkit++) {
 			links_to_flag_or_clear.push_back(std::pair<struct link, bool>(*linkit, false));
-			if (SMARTGUESS_USE_PERFECT_def) {
+			if (SMARTGUESS_USE_PERFECT_def || use_endsolver) {
 				// for perfectmode, i need to delete all links from the cell_list so only non-links remain
 				int s = frontpod->cell_list.size();
 				for (int i = 0; i < s; i++) {
