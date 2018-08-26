@@ -101,7 +101,7 @@ struct podwise_return {
 	//struct solutionobj * prmin();
 	float max_val();
 	float min_val();
-	int total_alloc(); // TODO: if 'perfectmode' aggregate data exists, use the size of one of them instead???
+	int total_alloc();
 	void add_aggregate(class cell * newcell, int times_flagged, int outof);
 	void add_aggregate(class cell * newcell, float times_flagged);
 };
@@ -210,7 +210,7 @@ inline int factorial(int x);
 
 // functions for the recursive smartguess method(s)
 int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * thingsdone);
-int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> * prvect, std::list<class cell *> * interior_list, int * thingsdone);
+int strat_endsolver_and_PR_reducer_logic(std::vector<struct podwise_return> * prvect, std::list<class cell *> * interior_list, int * thingsdone);
 int smartguess(struct chain * master_chain, struct game_stats * gstats, int * thingsdone);
 struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, struct chain * mychain, bool use_endsolver);
 

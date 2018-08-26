@@ -143,7 +143,7 @@ v4.11:	Begin trying to improve the smartguess method, will move to v5.0 when new
 		Possibly fixed the "recursion places more mines in one chain than exist in the whole game" problem???????
 		Needs testing! Put a print statement in avg()
 		(git push)
-		
+		Several bugfixes, finished the bordercell risk calculation bit
 		
 TODO:
 *re-test and probably eliminate "chain recheck depth" feature

@@ -582,7 +582,7 @@ inline int play_game() {
 					if (r == 1) { winorlose = 1; } else if (r < 0) { winorlose = r + 1; }
 					if (trans_map_val == 0) { // if it was a guess,
 						trans_map_char = '^'; isaguess = true;
-					} else { // if it was the chain-solver mode,
+					} else { // if it was the chain-solver mode OR if all solutions/no solutions flagged the cell,
 						trans_map_char = 'A';
 					}
 				}				

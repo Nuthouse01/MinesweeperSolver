@@ -25,12 +25,12 @@ X/Y/mines
 #define NUM_MINES_def				95
 #define	FIND_EARLY_ZEROS_def		false
 #define RANDOM_USE_SMART_def		true
-#define SMARTGUESS_USE_PERFECT_def	false
+#define SMARTGUESS_USE_PERFECT_def	true
 #define VERSION_STRING_def			"v4.11"
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 // -1: logfile is empty except for run-end results
-#define SCREEN_def					1
+#define SCREEN_def					2
 // if SPECIFY_SEED = 0, will generate a new seed from current time
 #define SPECIFY_SEED_def			0
 
@@ -41,7 +41,7 @@ X/Y/mines
 
 // after X loops, see if single-cell logic can take over... if not, will resume two-cell
 // surprisingly two-cell logic seems to consume even more time than the recursive smartguess when this value is high
-#define TWOCELL_LOOP_CUTOFF		6
+#define TWOCELL_LOOP_CUTOFF		4
 //// in recursive function, after recursing X layers down, check to see if the chain is fragmented (almost certainly is)
 //// this should have no impact on the accuracy of the result, and testing has shown that over many games it has almost no impact on efficiency
 //// NOTE: this must be >= SMARTGUESS_ENDSOLVER_THRESHOLD_def

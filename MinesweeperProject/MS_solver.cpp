@@ -118,18 +118,6 @@ float podwise_return::avg() {
 	}
 	return (a / float(total_weight));
 }
-// max: if there is a tie, or the solution doesn't represent only one allocations, return pointer to NULL
-//struct solutionobj * podwise_return::prmax() {
-//	std::list<struct solutionobj>::iterator solit = solutions.begin();
-//	std::list<struct solutionobj>::iterator maxit = solutions.begin(); // the one to return
-//	bool tied_for_max = false;
-//	for (solit++; solit != solutions.end(); solit++) {
-//		if (solit->answer < maxit->answer) { continue; } // existing max is greater
-//		if (solit->answer == maxit->answer) { tied_for_max = true; } // tied
-//		else if (solit->answer > maxit->answer) { tied_for_max = false; maxit = solit; }
-//	}
-//	if (tied_for_max || (maxit->allocs_encompassed != 1)) { return NULL; } else { return &(*maxit); }
-//}
 // max_val: find the max 'answer' value from all the solutions in the PR object
 float podwise_return::max_val() {
 	float retmax = 0.;
@@ -139,18 +127,6 @@ float podwise_return::max_val() {
 	}
 	return retmax;
 }
-// min: if there is a tie, or the solution doesn't represent only one allocations, return pointer to NULL
-//struct solutionobj * podwise_return::prmin() {
-//	std::list<struct solutionobj>::iterator solit = solutions.begin();
-//	std::list<struct solutionobj>::iterator minit = solutions.begin(); // the one to return
-//	bool tied_for_min = false;
-//	for (solit++; solit != solutions.end(); solit++) {
-//		if (solit->answer > minit->answer) { continue; } // existing min is lesser
-//		if (solit->answer == minit->answer) { tied_for_min = true; } // tied
-//		else if (solit->answer < minit->answer) { tied_for_min = false; minit = solit;}
-//	}
-//	if (tied_for_min || (minit->allocs_encompassed != 1)) { return NULL; } else { return &(*minit); }
-//}
 // min_val: find the min 'answer' value from all the solutions in the PR object
 float podwise_return::min_val() {
 	float retmin = 100000000.;
@@ -176,7 +152,6 @@ void podwise_return::add_aggregate(class cell * newcell, int times_flagged, int 
 			agg_info.insert(pos, aggregate_cell(newcell, times_flagged, outof)); return;
 		}
 		if (r == 0) {// combine
-			myprintfn(2, "WARN: when adding agg cell info, merged into existing, should be impossible??\n");
 			pos->outof += outof;
 			pos->times_flagged += times_flagged; return;
 		}
@@ -193,7 +168,6 @@ void podwise_return::add_aggregate(class cell * newcell, float times_flagged) {
 			agg_info.insert(pos, aggregate_cell(newcell, times_flagged * agg_allocs)); return;
 		}
 		if (r == 0) {// combine, should never happen?
-			myprintfn(2, "WARN: when adding agg cell info, merged into existing, should be impossible??\n");
 			pos->times_flagged += times_flagged * agg_allocs;
 			return;
 		}
@@ -498,14 +472,15 @@ float riskholder::finalrisk(int x, int y) {
 		return -1.;
 	float retval = 0.;
 	int s = (riskarray[x][y]).size();
-	if (RISK_CALC_METHOD == 0) { // AVERAGE
+	if (s == 1) { 
+		retval = riskarray[x][y][0]; 
+	} else if (RISK_CALC_METHOD == 0) { // AVERAGE
 		float sum = 0.;
 		for (int i = 0; i < s; i++) {
 			sum += riskarray[x][y][i];
 		}
 		retval = sum / float(s);
-	}
-	if (RISK_CALC_METHOD == 1) { // MAXIMUM
+	} else if (RISK_CALC_METHOD == 1) { // MAXIMUM
 		retval = -1.;
 		for (int i = 0; i < s; i++) {
 			float t = riskarray[x][y][i];
@@ -589,9 +564,11 @@ bool equivalent_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b)
 std::list<std::vector<int>> comb(int K, int N) {
 	// thanks to some dude on StackExchange
 	std::list<std::vector<int>> buildme;
-	if (N == 0)
-		return buildme;
-	static std::vector<bool> bitmask = std::vector<bool>();
+	if (K == 0 || N == 0) {
+		// even if choosing from 0, I should return one solution, even if it is an empty solution
+		return std::list<std::vector<int>>(1, std::vector<int>());
+	}
+	std::vector<bool> bitmask = std::vector<bool>();
 	bitmask.resize(K, 1);	// a vector of K leading 1's...
 	bitmask.resize(N, 0);	// ... followed by N-K trailing 0's, total length = N
 							// permutate the string of 1s and 0s and see what happens
@@ -603,7 +580,7 @@ std::list<std::vector<int>> comb(int K, int N) {
 			if (bitmask[i]) { buildme.back()[z] = i; z++; }
 		}
 	} while (std::prev_permutation(bitmask.begin(), bitmask.end()));
-	bitmask.clear(); //hopefully doesn't reduce capacity, that would undermine the whole point of static memory!
+	//bitmask.clear(); //hopefully doesn't reduce capacity, that would undermine the whole point of static memory!
 	return buildme;
 }
 
@@ -811,16 +788,16 @@ int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * things
 	for (std::list<class cell *>::iterator cit = clearme.begin(); cit != clearme.end(); cit++) { // clear-list
 		int r = mygame.reveal(*cit);
 		if (r == -1) {
-			myprintfn(2, "ERR: Unexpected loss during hunting zerolist reveal, must investigate!!\n");
+			myprintfn(2, "ERR: Unexpected loss during multicell logic reveal, must investigate!!\n");
 			assert(0);
 			return -1;
 		}
 		*thingsdone += r;
 	}
 	for (std::list<class cell *>::iterator fit = flagme.begin(); fit != flagme.end(); fit++) { // flag-list
-int r = mygame.set_flag(*fit);
-(*thingsdone)++;
-if (r == 1) { return 1; } // game won!
+		int r = mygame.set_flag(*fit);
+		(*thingsdone)++;
+		if (r == 1) { return 1; } // game won!
 	}
 
 	return 0;
@@ -833,7 +810,7 @@ if (r == 1) { return 1; } // game won!
 //				^ plus, searches for chain solutions that are definitely invalid and eliminates them
 // return: 1=win/-1=loss/0=continue (cannot lose unless something is seriously out of whack)
 // but, it only causes smartguess to return to the main play_game level if this function adds to *thingsdone
-int strat_endsolver_and_chain_reducer_logic(std::vector<struct podwise_return> * prvect, std::list<class cell *> * interior_list, int * thingsdone) {
+int strat_endsolver_and_PR_reducer_logic(std::vector<struct podwise_return> * prvect, std::list<class cell *> * interior_list, int * thingsdone) {
 	/* ENDSOLVER uses the following logic:
 	1: for chain X in retholder, if max(X)+min(others) > mines_remain, then:
 		   anything in X with value max(X) is definitely an invalid solution. also, should check the next-biggest in X, and so on.
@@ -1035,9 +1012,11 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 	}
 
 	float interior_risk = 150.;
+	std::vector<struct podwise_return> retholder;
+	std::vector<struct chain> listofchains;
 	bool use_endsolver = (mygame.get_mines_remaining() <= SMARTGUESS_ENDSOLVER_THRESHOLD_def);
 	// if there are no interior cells AND it is not near the endgame, then skip the recursion
-	if (!interior_list.empty() || use_endsolver) {
+	if (!interior_list.empty() || use_endsolver || SMARTGUESS_USE_PERFECT_def) {
 
 		// step 5: iterate again, building links to anything within 5x5(only set MY links)
 		for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
@@ -1055,17 +1034,15 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		// step 6: identify chains and sort the pods into a VECTOR of chains... 
 		int numchains = master_chain->identify_chains();
 		// smartguess/normal: turn "cell_list" into a simple number, and clear the actual list so it uses less memory while recursing
-		// smartguess/endsolver: use cell_list to return non-link-cells sometimes
-		// perfectmode/normal: use cell_list because aggregate data is used even for the non-link-cells
-		// perfectmode/endsolver: use cell_list to return non-link-cells every time
-		std::vector<struct chain> listofchains = master_chain->sort_into_chains(numchains, !(use_endsolver || SMARTGUESS_USE_PERFECT_def));
+		// other modes: retain the cell_list information
+		listofchains = master_chain->sort_into_chains(numchains, !(use_endsolver || SMARTGUESS_USE_PERFECT_def));
 
 		// step 7: for each chain, recurse (depth, chain, mode are only arguments) and get back list of answer allocations
 		// handle the multiple podwise_retun objects, just sum their averages
-		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, # primary chains = %i \n", listofchains.size());
+		if (ACTUAL_DEBUG) myprintfn(2, "DEBUG: in smart-guess, # primary chains = %i \n", numchains);
 		float border_allocation = 0;
-		std::vector<struct podwise_return> retholder = std::vector<struct podwise_return>(numchains, podwise_return());
-		for (int s = 0; s < listofchains.size(); s++) {
+		retholder.resize(numchains, podwise_return());
+		for (int s = 0; s < numchains; s++) {
 			recursion_safety_valve = false; // reset the flag for each chain
 			struct podwise_return asdf = podwise_recurse(0, 0, &(listofchains[s]), use_endsolver);
 			// TODO: handle the perfectmode data when it returns
@@ -1083,7 +1060,7 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		// solution: checks if any solutions fit perfectly, if in perfectmode it also finds & eliminates any invalid solutions
 		// currently runs just if there are not many mines remaining, consider running if there are not many interior-list cells remaining??
 		if (use_endsolver) {
-			int p = strat_endsolver_and_chain_reducer_logic(&retholder, &interior_list, thingsdone);
+			int p = strat_endsolver_and_PR_reducer_logic(&retholder, &interior_list, thingsdone);
 			if (*thingsdone) {
 				if (ACTUAL_DEBUG) myprintfn(2, "ENDSOLVER: did something!!\n");
 				return p;
@@ -1127,17 +1104,88 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 
 	} // end of "finding likely border mine allocation to determine interior risk" section
 
+
 	// step 10: calculate risk for the border cells and identify cells tied for minimum risk
-	// iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
-	for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
-		float podrisk = podit->risk();
-		for (int i = 0; i < podit->cell_list.size(); i++) {
-			myriskholder.addrisk(podit->cell_list[i], podrisk);
+	std::pair<float, std::list<class cell *>> myriskreturn;
+	std::list<class cell *> clearmelist;
+	std::list<class cell *> flagmelist;
+	if(!SMARTGUESS_USE_PERFECT_def) {
+		// Option A: the risk for each individual cell is the avg/max risk from any of the pods it belongs to
+		// smartguess/normal and smartguess/endsolver
+		// iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
+		for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
+			float podrisk = podit->risk();
+			for (int i = 0; i < podit->cell_list.size(); i++) {
+				myriskholder.addrisk(podit->cell_list[i], podrisk);
+			}
+		}
+	} else {
+		// for each PR in retholder,
+		for (int a = 0; a < retholder.size(); a++) {
+			if (use_endsolver) {
+				// perfectmode/endsolver
+				// create the aggregate info structure in the PR from the exhaustive list of solutions
+
+				// first, populate the list with 'empty' entries so I can later distinguish 'no data' from 'always clear'
+				// for each pod in the corresponding chain,
+				for (std::list<struct pod>::iterator podit = listofchains[a].podlist.begin(); podit != listofchains[a].podlist.end(); podit++) {
+					// for each cell in that pod,
+					for (int b = 0; b < podit->cell_list.size(); b++) {
+						retholder[a].add_aggregate(podit->cell_list[b], 0);
+					}
+				}
+
+				// second, actually create aggregate info from the solutions!
+				retholder[a].agg_allocs = 1;
+				// for each solution in the PR,
+				for (std::list<struct solutionobj>::iterator solit = retholder[a].solutions.begin(); solit != retholder[a].solutions.end(); solit++) {
+					// for each cell in that solution's allocation,
+					for (std::list<class cell *>::iterator cellit = solit->allocation.begin(); cellit != solit->allocation.end(); cellit++) {
+						retholder[a].add_aggregate(*cellit, 1);
+					}
+				}
+				// i know that each solution has exactly 1 alloc so this is safe
+				retholder[a].agg_allocs = retholder[a].solutions.size();
+			}
+			// perfectmode/endsolver and perfectmode/normal
+			// calculate actual risk percentage for each cell from the aggregate info structure
+			// also identify if any cells are 0% or 100%
+			// each PR object is guaranteed to not overlap with any others
+			for (std::list<struct aggregate_cell>::iterator aggit = retholder[a].agg_info.begin(); aggit != retholder[a].agg_info.end(); aggit++) {
+				float cellrisk = 100. * float(aggit->times_flagged) / float(retholder[a].agg_allocs);
+				assert(cellrisk <= 100.);
+				assert(cellrisk >= 0.);
+				if (cellrisk == 100.) {
+					flagmelist.push_back(aggit->me);
+				} else if (cellrisk == 0.) {
+					clearmelist.push_back(aggit->me);
+				} else {
+					myriskholder.addrisk(aggit->me, cellrisk);
+				}
+			}
 		}
 	}
-	// find the minimum risk from anything in the border cells (pods) and any cells with that risk
-	// also clears/resets the myriskholder object for next time
-	std::pair<float, std::list<class cell *>> myriskreturn = myriskholder.findminrisk();
+	if (flagmelist.empty() && clearmelist.empty()) {
+		// find the lowest risk of anything i've entered into the riskholder, as well as the cells that correspond to it
+		// also clears/resets the myriskholder object for next time
+		myriskreturn = myriskholder.findminrisk();
+	} else {
+		// flag the flagme and clear the clearme and RETURN
+		for (std::list<class cell *>::iterator cit = clearmelist.begin(); cit != clearmelist.end(); cit++) { // clear-list
+			*thingsdone += 1;
+			if (mygame.reveal(*cit) == -1) {
+				myprintfn(2, "ERR: Unexpected loss during smartguess chain-solve, must investigate!!\n"); assert(0); return -2;
+			}
+		}
+		for (std::list<class cell *>::iterator fit = flagmelist.begin(); fit != flagmelist.end(); fit++) { // flag-list
+			int r = mygame.set_flag(*fit);
+			*thingsdone += 1;
+			if (r == 1) { return 1; } // game won!
+		}
+		return 0;
+	}
+
+
 
 
 	// step 11: decide between border and interior, call 'rand_from_list' and return
@@ -1252,6 +1300,7 @@ struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, 
 			// perfectmode, endsolver: return the exhaustive list of all solutions that satisfy this, each has allocs=1
 			struct podwise_return r;
 			r.solutions.resize(c, solutionobj(m, 1)); // now has correct # branches, just needs the actual cells
+			r.effort = 1;
 			std::list<std::vector<int>> ret = comb(m, s);
 			// for each solution,
 			for (std::list<struct solutionobj>::iterator solit = r.solutions.begin(); solit != r.solutions.end(); solit++) {
