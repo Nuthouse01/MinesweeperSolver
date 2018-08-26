@@ -26,15 +26,15 @@ X/Y/mines
 #define	FIND_EARLY_ZEROS_def		false
 #define RANDOM_USE_SMART_def		true
 #define SMARTGUESS_USE_PERFECT_def	true
-#define VERSION_STRING_def			"v4.11"
+#define VERSION_STRING_def			"v5.0"
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 // -1: logfile is empty except for run-end results
-#define SCREEN_def					2
+#define SCREEN_def					0
 // if SPECIFY_SEED = 0, will generate a new seed from current time
 #define SPECIFY_SEED_def			0
 
-#define ACTUAL_DEBUG				1
+#define ACTUAL_DEBUG				0
 
 #define HISTOGRAM_RESOLUTION		15
 #define HISTOGRAM_MAX_HORIZ_SIZE	40
