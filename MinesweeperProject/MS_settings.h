@@ -19,7 +19,7 @@ X/Y/mines
 
 // #defines
 // sets the "default values" for each setting
-#define NUM_GAMES_def				5000000
+#define NUM_GAMES_def				1000
 #define SIZEX_def					30
 #define SIZEY_def					16
 #define NUM_MINES_def				85
@@ -33,9 +33,9 @@ X/Y/mines
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 // -1: logfile is empty except for run-end results
 // 3: lots of extra smartguess debug info, everything to screen & log
-#define SCREEN_def					3
+#define SCREEN_def					0
 // if SPECIFY_SEED = 0, will generate a new seed from current time
-#define SPECIFY_SEED_def			1254336094
+#define SPECIFY_SEED_def			0
 
 
 
