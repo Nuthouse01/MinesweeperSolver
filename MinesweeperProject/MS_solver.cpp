@@ -915,8 +915,8 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 		for (std::list<class cell *>::iterator iiter = interior_list->begin(); iiter != interior_list->end(); iiter++) {
 			*thingsdone += 1;
 			if (mygame.reveal(*iiter) == -1) {
-				myprintfn(2, "ERR: Unexpected loss during smartguess chain-solve, must investigate!!\n"); assert(0); return -2;
-			} 
+				myprintfn(2, "ERR: Unexpected loss during smartguess chain-solve!!\n"); assert(0); return -2;
+			}
 		}
 		// for each PR object, 
 		for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
@@ -1179,7 +1179,7 @@ int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag) {
 		for (std::list<class cell *>::iterator cit = clearmelist.begin(); cit != clearmelist.end(); cit++) { // clear-list
 			*thingsdone += 1;
 			if (mygame.reveal(*cit) == -1) {
-				myprintfn(2, "ERR: Unexpected loss during smartguess chain-solve, must investigate!!\n"); assert(0); return -2;
+				myprintfn(2, "ERR: Unexpected loss during smartguess chain-solve!!\n"); assert(0); return -2;
 			}
 		}
 		for (std::list<class cell *>::iterator fit = flagmelist.begin(); fit != flagmelist.end(); fit++) { // flag-list

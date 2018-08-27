@@ -697,6 +697,7 @@ int main(int argc, char *argv[]) {
 				myrunstats.games_won_noguessing++;
 			}
 		} else if (r == -1) {
+			mygamestats.trans_map += "?";
 			myrunstats.games_lost_unexpectedly++;
 			assert(0);
 		}
