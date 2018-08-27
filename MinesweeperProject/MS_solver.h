@@ -22,8 +22,7 @@
 
 extern class runinfo myruninfo;
 extern class game mygame;
-extern bool FIND_EARLY_ZEROS_var;
-extern bool RANDOM_USE_SMART_var;
+extern int GUESSING_MODE_var;
 
 
 
@@ -210,7 +209,7 @@ inline int factorial(int x);
 
 // functions for the recursive smartguess method(s)
 int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * thingsdone);
-int strat_endsolver_and_PR_reducer_logic(std::vector<struct podwise_return> * prvect, std::list<class cell *> * interior_list, int * thingsdone);
+int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return> * prvect, std::list<class cell *> * interior_list, int * thingsdone);
 int smartguess(struct chain * master_chain, struct game_stats * gstats, int * thingsdone);
 struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, struct chain * mychain, bool use_endsolver);
 

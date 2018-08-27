@@ -96,13 +96,19 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 	} else {
 		myprintfn(2, "Used 'hunting' method = human-like (can lose at any stage)\n");
 	}
-	if (RANDOM_USE_SMART_var) {
 		myprintfn(2, "Used 'guessing' mode = smartguess (slower but increased winrate)\n");
+	if (GUESSING_MODE_var == 0) {
+		myprintfn(2, "Using 'guessing' mode = guess randomly (lower winrate but faster)\n");
+	} else {
+		if (GUESSING_MODE_var == 1) {
+			myprintfn(2, "Using 'guessing' mode = smartguess (slower but increased winrate)\n");
+		} else if (GUESSING_MODE_var == 2) {
+			myprintfn(2, "Using 'guessing' mode = perfectmode (experimental, maximum winrate)\n");
+		}
 		myprintfn(2, "    Smartguess border est. avg deviation:   %+7.4f\n", (smartguess_diff_total / float(smartguess_attempts_total)));
 		myprintfn(2, "    Times when recursion got out of hand:%5i\n", smartguess_valves_tripped_total);
-	} else {
-		myprintfn(2, "Used 'guessing' mode = guess randomly (lower winrate but faster)\n");
 	}
+
 	myprintfn(2, "Average time per game:                     %8.4f sec\n", (float(elapsed_sec) / float(games_total)));
 	myprintfn(2, "Average 121-cross uses per game:           %5.1f\n", (float(strat_121_total) / float(games_total)));
 	myprintfn(2, "Avg nonoverlap-flag (simple) per game:     %5.1f\n", (float(strat_nov_flag_total) / float(games_total)));

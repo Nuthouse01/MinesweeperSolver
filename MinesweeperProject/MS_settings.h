@@ -19,36 +19,33 @@ X/Y/mines
 
 // #defines
 // sets the "default values" for each setting
-#define NUM_GAMES_def				1000
+#define NUM_GAMES_def				100000
 #define SIZEX_def					30
 #define SIZEY_def					16
-#define NUM_MINES_def				95
+#define NUM_MINES_def				85
+// TODO: elminate find_early_zeros mode?
+// will start the game by revealing a zero-cell, giving a huge advantage
 #define	FIND_EARLY_ZEROS_def		false
-#define RANDOM_USE_SMART_def		true
-#define SMARTGUESS_USE_PERFECT_def	true
+// there are 3 guessing modes: 0=random, 1=smartguess, 2=perfectmode
+#define GUESSING_MODE_def			2
 #define VERSION_STRING_def			"v5.0"
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 // -1: logfile is empty except for run-end results
+// 3: lots of extra smartguess debug info, everything to screen & log
 #define SCREEN_def					0
 // if SPECIFY_SEED = 0, will generate a new seed from current time
 #define SPECIFY_SEED_def			0
-
-#define ACTUAL_DEBUG				0
 
 #define HISTOGRAM_RESOLUTION		15
 #define HISTOGRAM_MAX_HORIZ_SIZE	40
 
 // after X loops, see if single-cell logic can take over... if not, will resume two-cell
 // surprisingly two-cell logic seems to consume even more time than the recursive smartguess when this value is high
-#define TWOCELL_LOOP_CUTOFF		4
+#define TWOCELL_LOOP_CUTOFF		3
 //// in recursive function, after recursing X layers down, check to see if the chain is fragmented (almost certainly is)
 //// this should have no impact on the accuracy of the result, and testing has shown that over many games it has almost no impact on efficiency
 //// NOTE: this must be >= SMARTGUESS_ENDSOLVER_THRESHOLD_def
-//#define CHAIN_RECHECK_DEPTH			8
-// when there are fewer than X mines on the field, begin storing the actual cells flagged to create each answer found by recursion
-// also attempt to solve the puzzle if there is exactly one perfect solution
-// NOTE: this must be <= CHAIN_RECHECK_DEPTH
 #define SMARTGUESS_ENDSOLVER_THRESHOLD_def	8
 // in recursive function, after finding X solutions, stop being so thorough... only test RECURSION_SAFE_WIDTH scenarios at each lvl
 // this comes into play only very rarely even when set as high as 10k
@@ -68,6 +65,10 @@ X/Y/mines
 #define RISK_CALC_METHOD			0
 
 
+//#define CHAIN_RECHECK_DEPTH			8
+// when there are fewer than X mines on the field, begin storing the actual cells flagged to create each answer found by recursion
+// also attempt to solve the puzzle if there is exactly one perfect solution
+// NOTE: this must be <= CHAIN_RECHECK_DEPTH
 
 
 #endif

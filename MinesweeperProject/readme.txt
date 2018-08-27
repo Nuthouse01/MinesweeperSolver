@@ -84,8 +84,7 @@ z#		number of consecutive "cheaty" zero-guesses made, only until solver can solv
 ^#		number of consecutive smart-guesses made
 M#		number of cells flagged/revealed in multi-cell logic when optimizing the chain before
 			a smartguess (this uses an improved version of two-cell logic)
-A#		number of cells smartguess alg found to be a perfect solution to one of the chains (explained
-		somewhere below, its kinda complicated)
+E#		number of cells that the endsolver (inside smartguess) found definitely flag or definitely clear
 
 
 

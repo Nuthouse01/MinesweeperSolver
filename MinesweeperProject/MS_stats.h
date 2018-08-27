@@ -15,7 +15,7 @@
 
 // didn't wanna extern anything but whatever
 extern bool FIND_EARLY_ZEROS_var;
-extern bool RANDOM_USE_SMART_var;
+extern int GUESSING_MODE_var;
 
 
 // stats for a single game

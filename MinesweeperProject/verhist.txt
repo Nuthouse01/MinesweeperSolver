@@ -133,17 +133,18 @@ v4.11:	Begin trying to improve the smartguess method, will move to v5.0 when new
 		Smartguess recursion takes pointer to chain instead of actual chain; less mem on stack
 		Replaced most comparisons with the "endsolver threshold" with a boolean that is set once
 		Removed the "chain recheck" section
-		(git push)
 		Built infrastructure and functions needed for 'perfectmode'
 		Implemented 'perfectmode' in recursive function (TODO: DEBUG AND VERIFY)
-		(git push)
 		Turned endsolver section into its own function and greatly improved it
 		Began adding support for "aggregate info" to operate without the 'outof' member
-		(git push)
 		Possibly fixed the "recursion places more mines in one chain than exist in the whole game" problem???????
-		Needs testing! Put a print statement in avg()
-		(git push)
 		Several bugfixes, finished the bordercell risk calculation bit
+		
+v5.0:	Bugfix: fixed some 'clear' cells not being added to aggregate data
+		Bugfix: will now detect if a scenario forces an invalid configuration somewhere down the line by checking for contradictory instructions in the pipeline
+		Fixed the roadmap, finally
+		Replaced 'use random' and 'use perfectmode' flags with just one, 'GUESSING_MODE_var'
+		
 		
 TODO:
 *re-test and probably eliminate "chain recheck depth" feature

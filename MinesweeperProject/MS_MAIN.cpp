@@ -79,8 +79,9 @@ MS_solver.cpp, MS_solver.h
 
 // global vars:
 // these might like to go in the myruninfo struct, but they're intrinsic to the solver, not the game, so I left them isolated
-bool FIND_EARLY_ZEROS_var = false; // may want to eliminate this option so i can hide zerolist and get perfect privacy enforcement???
-bool RANDOM_USE_SMART_var = false;
+bool FIND_EARLY_ZEROS_var = false; // TODO: may want to eliminate this option so i can hide zerolist and get perfect privacy enforcement???
+//bool RANDOM_USE_SMART_var = false;
+int GUESSING_MODE_var = 0;
 
 class game mygame = game();					// init empty, will fill the field_blank later
 class runinfo myruninfo = runinfo();		// init emtpy, will fill during input parsing
@@ -107,42 +108,39 @@ inline int parse_input_args(int argc, char *argv[]) {
 const char helptext[1700] = "MinesweeperSolver v3.0 by Brian Henson\n\
 This program is intended to generate and play a large number of Minesweeper\n\
 games to collect win/loss info or whatever other data I feel like. It applies\n\
-single-cell and multi-cell logical strategies as much as possible before\n\
+single-cell and two-cell logical strategies as much as possible before\n\
 revealing any unknown cells, of course. An extensive log is generated showing\n\
 most of the stages of the solver algorithm. Each game is replayable by using the\n\
 corresponding seed in the log, for closer analysis or debugging.\n\n\
 *Usage/args:\n\
-   -h, -?:               Print this text, then exit\n\
-   -pro, -prompt:        Interactively enter various run/game settings.\n\
-       Automatically chosen when no args are given.\n\
-   -def, -default:       Run the program using default values\n\
+   -h, -?:             Print this text, then exit.\n\
+   -pro, -prompt:      Interactively enter various run/game settings.\n\
+         Automatically chosen when no args are given.\n\
+   -def, -default:     Run the program using default values.\n\
 *To apply settings from the command-line, use any number of these:\n\
-   -num, -numgames:      How many games to play with these settings\n\
-   -field:               Field size and number of mines, format= #x-#y-#mines\n\
-   -findz, -findzero:    1=on, 0=off. If on, reveal zeroes during earlygame.\n\
-       Not human-like but usually reaches end-game.\n\
-   -smart, -smartguess:  1=on, 0=off. Replaces random guessing method with\n\
-       speculative allocation of mines and risk calculation. Increases runtime\n\
-       by 2-8x(avg) but increases winrate.\n\
-   -seed:                0=random seed, other=specify seed. Suppresses -num \n\
-       argument and plays only 1 game.\n\
-   -scr, -screen:        How much printed to screen. 0=minimal clutter,\n\
-       1=results for each game, 2=everything\n\n";
+   -num, -numgames:    How many games to play with these settings.\n\
+   -field:             Field size and number of mines, format= #x-#y-#mines.\n\
+   -findz, -findzero:  1=on, 0=off. If on, reveal zeroes during earlygame.\n\
+         Not human-like but more reliably reaches end-game.\n\
+   -gmode:             Which guessing method to use. 0=random (fastest),\n\
+	     1=smartguess (slower but higher accuracy), 2=perfectmode (experimental,\n\
+         slowest but has highest accuracy).\n\
+   -seed:              0=random seed, other=specify seed. Suppresses -num \n\
+         argument and plays only 1 game.\n\
+   -scr, -screen:      How much printed to screen. 0=minimal clutter,\n\
+         1=results for each game, 2=everything\n\n";
    
 
 
 	// apply the defaults
-	//myruninfo.SIZEX = SIZEX_def;
 	int tempsizex = SIZEX_def;
-	//myruninfo.SIZEY = SIZEY_def; 
 	int tempsizey = SIZEY_def;
-	//myruninfo.NUM_MINES = NUM_MINES_def;
 	int tempnummines = NUM_MINES_def;
 	myruninfo.NUM_GAMES = NUM_GAMES_def;
 	myruninfo.SPECIFY_SEED = SPECIFY_SEED_def;
 	myruninfo.SCREEN = SCREEN_def;
 	FIND_EARLY_ZEROS_var = FIND_EARLY_ZEROS_def;
-	RANDOM_USE_SMART_var = RANDOM_USE_SMART_def;
+	GUESSING_MODE_var = GUESSING_MODE_def;
 
 
 	/*
@@ -207,26 +205,13 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
 		}
 
-		printf_s("Use smarter guessing, 0/1: [%i]  ", RANDOM_USE_SMART_var);
+		printf_s("Use guessing method 0=random, 1=smartguess, 2=perfectmode: [%i]  ", GUESSING_MODE_var);
 		std::getline(std::cin, bufstr);
 		if (bufstr.size() != 0) {
 			// convert and apply
-			RANDOM_USE_SMART_var = atoi(bufstr.c_str());
+			GUESSING_MODE_var = atoi(bufstr.c_str());
 			// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
 		}
-
-		// NOTE: decided that specifying a seed is used so rarely, it doesn't need to be prompted; -seed only is enough
-		//printf_s("Specify seed to use, 0=random: [%i]  ", SPECIFY_SEED);
-		//std::getline(std::cin, bufstr);
-		//if (bufstr.size() != 0) {
-		//	// convert and apply
-		//	SPECIFY_SEED = atoi(bufstr.c_str());
-		//	// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
-		//	//if (SPECIFY_SEED < 0) {
-		//	//	printf_s("ERR: seed cannot be negative\n"); return 1;
-		//	//}
-		//	NUM_GAMES = 1;
-		//}
 
 		printf_s("Set printout level, 0/1/2: [%i]  ", myruninfo.SCREEN);
 		std::getline(std::cin, bufstr);
@@ -306,7 +291,7 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			}
 		} else if (!strncmp(argv[i], "-smart", 6)) {
 			if (argv[i + 1] != NULL) {
-				RANDOM_USE_SMART_var = bool(atoi(argv[i + 1]));
+				GUESSING_MODE_var = bool(atoi(argv[i + 1]));
 				// NOTE: if the argument at i+1 is not numeric, it simply returns 0 instead of complaining
 				i++; continue;
 			} else {
@@ -357,7 +342,7 @@ inline int play_game() {
 		r = mygame.reveal(rand_from_list(&mygame.unklist));
 		if (r == -1) { return 0; } // no need to log it, first-move loss when random-hunting is a handled situation
 		// if going to use smartguess, just pretend that the first guess was a smartguess
-		if(RANDOM_USE_SMART_var) { mygamestats.trans_map = "^ "; } else { mygamestats.trans_map = "r "; }
+		if(GUESSING_MODE_var != 0) { mygamestats.trans_map = "^ "; } else { mygamestats.trans_map = "r "; }
 		// accumulate into luck value
 	} else {
 		// reveal a cell from the zerolist... game loss probably not possible, but whatever
@@ -535,7 +520,7 @@ inline int play_game() {
 					smartguess
 					if just a guess,
 						isaguess=true, set trans_map_char
-					else if chain answer mode,
+					else if endsolver activated,
 						trans_map_val = action#, set trans_map_char, consecutiveguesses=0
 			if isaguess
 				inc guesses, set trans_map_val = guesses
@@ -557,7 +542,7 @@ inline int play_game() {
 					winorlose = -1;
 				}
 				trans_map_char = 'z'; isaguess = true;
-			} else if(!RANDOM_USE_SMART_var) {
+			} else if(GUESSING_MODE_var == 0) {
 				// option B: random-guess
 				mygamestats.luck_value_mult *= (1. - (float(mygame.get_mines_remaining()) / float(mygame.unklist.size())));
 				mygamestats.luck_value_sum += (1. - (float(mygame.get_mines_remaining()) / float(mygame.unklist.size())));
@@ -573,17 +558,21 @@ inline int play_game() {
 
 				struct chain fullchain = chain();
 				r = strat_multicell_logic_and_chain_builder(&fullchain, &trans_map_val);
-				if (r != 0) { winorlose = r; }	// if win, return 1; if lose, return as unexpeced loss -1; in either case, trans_map_val should be nonzero
+				// TODO: combine multicell into smartguess just for cleanliness' sake? would need additional arg to get out what mode it concluded in
+				// if win, return 1; if lose, return as unexpeced loss -1; in either case, trans_map_val should be nonzero
+				// return->stored	1->1	-1->-1		0->not stored, continue
+				if (r != 0) { winorlose = r; }
 				if (trans_map_val != 0) {	// if something was flagged/cleared, 
 					trans_map_char = 'M';
 				} else {					// if nothing was flagged/cleared, continue with smartguess
 					r = smartguess(&fullchain, &mygamestats, &trans_map_val);
 					// if win, return 1; if lose, return as EXPECTED loss 0 or unexpected loss -1
+					// return->stored		1->1		-1->0		-2->-1		0->not stored, continue
 					if (r == 1) { winorlose = 1; } else if (r < 0) { winorlose = r + 1; }
 					if (trans_map_val == 0) { // if it was a guess,
 						trans_map_char = '^'; isaguess = true;
-					} else { // if it was the chain-solver mode OR if all solutions/no solutions flagged the cell,
-						trans_map_char = 'A';
+					} else { // if it was the endsolver mode OR found 100% / 0% by aggregate info,
+						trans_map_char = 'E';
 					}
 				}				
 			}
@@ -654,10 +643,12 @@ int main(int argc, char *argv[]) {
 		myprintfn(2, "Using 'hunting' method = human-like (can lose at any stage)\n");
 	}
 
-	if (RANDOM_USE_SMART_var) {
-		myprintfn(2, "Using 'guessing' mode = smartguess (slower but increased winrate)\n");
-	} else {
+	if (GUESSING_MODE_var == 0) {
 		myprintfn(2, "Using 'guessing' mode = guess randomly (lower winrate but faster)\n");
+	} else if (GUESSING_MODE_var == 1) {
+		myprintfn(2, "Using 'guessing' mode = smartguess (slower but increased winrate)\n");
+	} else if (GUESSING_MODE_var == 2) {
+		myprintfn(2, "Using 'guessing' mode = perfectmode (experimental, maximum winrate)\n");
 	}
 
 	// construct a trivial random generator engine from a time-based seed:
