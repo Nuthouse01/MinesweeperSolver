@@ -145,6 +145,7 @@ int game::reveal(class cell * revealme) {
 
 // flag: sets as flagged, reduces # remaining mines, reduce "effective" values of everything visible around it
 // return 1=win, 0=continue. if not an actual mine, dump error messages and try to abort
+// NEW: return -1=win, 0=nothing happened, 1=flagged a cell
 int game::set_flag(class cell * flagme) {
 	if (flagme->status != UNKNOWN) { return 0; }
 
@@ -190,10 +191,10 @@ int game::set_flag(class cell * flagme) {
 			}
 		}
 		// officially won!
-		return 1;
+		return -1;
 	}
 
-	return 0;
+	return 1; // successfully flagged a cell
 }
 
 // filter_adjacent: basically the same as get_adjacent but returns only the TARGET cells

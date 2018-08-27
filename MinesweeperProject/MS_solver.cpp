@@ -791,8 +791,8 @@ int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * things
 		}
 		for (std::list<class cell *>::iterator fit = flagme.begin(); fit != flagme.end(); fit++) { // flag-list
 			int r = mygame.set_flag(*fit);
-			(*thingsdone)++;
-			if (r == 1) { return 1; } // game won!
+			*thingsdone += bool(r);
+			if (r == -1) { return 1; } // game won!
 		}
 	}
 	return 0;
@@ -897,8 +897,9 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 			// if this PR has only one solution remaining, and it is unique, that solution can be applied! unlikely but possible
 			if (((priter->solutions.size()) == 1) && (priter->solutions.front().allocs_encompassed == 1)) {
 				for (std::list<class cell *>::iterator celliter = priter->solutions.front().allocation.begin(); celliter != priter->solutions.front().allocation.end(); celliter++) {
-					*thingsdone += ((*celliter)->get_status() == UNKNOWN);
-					if (mygame.set_flag(*celliter) == 1) { retval = 1; }
+					int r = mygame.set_flag(*celliter);
+					*thingsdone += bool(r);
+					if (r == -1) { retval = 1; }
 				}
 			}
 		}
@@ -934,16 +935,18 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 			// if this PR has only one solution remaining, and it is unique, that solution can be applied! unlikely but possible
 			if (((priter->solutions.size()) == 1) && (priter->solutions.front().allocs_encompassed == 1)) {
 				for (std::list<class cell *>::iterator celliter = priter->solutions.front().allocation.begin(); celliter != priter->solutions.front().allocation.end(); celliter++) {
-					*thingsdone += ((*celliter)->get_status() == UNKNOWN);
-					if (mygame.set_flag(*celliter) == 1) { retval = 1; }
+					int r = mygame.set_flag(*celliter);
+					*thingsdone += bool(r);
+					if (r == -1) { retval = 1; }
 				}
 			}
 		}
 	} else if ((maxsum + interior_list->size()) == minesval) {
 		// int_list is all mines
 		for (std::list<class cell *>::iterator iiter = interior_list->begin(); iiter != interior_list->end(); iiter++) {
-			*thingsdone += ((*iiter)->get_status() == UNKNOWN);
-			if (mygame.set_flag(*iiter) == 1) { retval = 1; }
+			int r = mygame.set_flag(*iiter);
+			*thingsdone += bool(r);
+			if (r == -1) { retval = 1; }
 		}
 		// for each PR object, 
 		for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
@@ -960,8 +963,9 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 			// if this PR has only one solution remaining, and it is unique, that solution can be applied! unlikely but possible
 			if (((priter->solutions.size()) == 1) && (priter->solutions.front().allocs_encompassed == 1)) {
 				for (std::list<class cell *>::iterator celliter = priter->solutions.front().allocation.begin(); celliter != priter->solutions.front().allocation.end(); celliter++) {
-					*thingsdone += ((*celliter)->get_status() == UNKNOWN);
-					if (mygame.set_flag(*celliter) == 1) { retval = 1; }
+					int r = mygame.set_flag(*celliter);
+					*thingsdone += bool(r);
+					if (r == -1) { retval = 1; }
 				}
 			}
 		}
@@ -1181,8 +1185,8 @@ int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag) {
 		}
 		for (std::list<class cell *>::iterator fit = flagmelist.begin(); fit != flagmelist.end(); fit++) { // flag-list
 			int r = mygame.set_flag(*fit);
-			*thingsdone += 1;
-			if (r == 1) { return 1; } // game won!
+			*thingsdone += bool(r);
+			if (r == -1) { return 1; } // game won!
 		}
 		return 0;
 	}
@@ -1703,9 +1707,9 @@ int strat_singlecell(class cell * me, int * thingsdone) {
 	if ((me->get_effective() != 0) && (me->get_effective() == unk.size())) {
 		// flag all unknown cells
 		for (int i = 0; i < unk.size(); i++) {
-			(*thingsdone)++; // inc by # of cells flagged (one)
 			r = mygame.set_flag(unk[i]);
-			if (r == 1) { return 1; } // validated win! time to return!
+			*thingsdone += bool(r); // inc by # of cells flagged (one)
+			if (r == -1) { return 1; } // validated win! time to return!
 		}
 		unk.clear(); // must clear the unklist for next stage to work right
 	}
@@ -1807,9 +1811,9 @@ int strat_nonoverlap_flag(class cell * center, struct game_stats * gstats, int *
 		if (nonoverlap[0].size() == z) {
 			gstats->strat_nov_flag++;
 			for (int i = 0; i < z; i++) {
-				(*thingsdone)++; // inc once for each flag placed
 				int r = mygame.set_flag(nonoverlap[0][i]);
-				if (r == 1) { return 1; }
+				*thingsdone += bool(r); // inc once for each flag placed
+				if (r == -1) { return 1; }
 			}
 			return 0;
 		}

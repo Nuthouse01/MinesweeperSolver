@@ -364,7 +364,7 @@ inline int play_game() {
 			numactions = mygame.get_mines_remaining();
 			while(!mygame.unklist.empty()) {
 				r = mygame.set_flag(mygame.unklist.front());
-				if (r == 1) {
+				if (r == -1) {
 					// validated win! time to return!
 					// add entry to transition map, use 'numactions'
 					sprintf_s(buffer, "s%i ", numactions);
