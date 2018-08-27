@@ -19,7 +19,7 @@ X/Y/mines
 
 // #defines
 // sets the "default values" for each setting
-#define NUM_GAMES_def				100000
+#define NUM_GAMES_def				10000
 #define SIZEX_def					30
 #define SIZEY_def					16
 #define NUM_MINES_def				85
@@ -33,9 +33,9 @@ X/Y/mines
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 // -1: logfile is empty except for run-end results
 // 3: lots of extra smartguess debug info, everything to screen & log
-#define SCREEN_def					0
+#define SCREEN_def					3
 // if SPECIFY_SEED = 0, will generate a new seed from current time
-#define SPECIFY_SEED_def			0
+#define SPECIFY_SEED_def			1045245653
 
 #define HISTOGRAM_RESOLUTION		15
 #define HISTOGRAM_MAX_HORIZ_SIZE	40
@@ -50,7 +50,7 @@ X/Y/mines
 // in recursive function, after finding X solutions, stop being so thorough... only test RECURSION_SAFE_WIDTH scenarios at each lvl
 // this comes into play only very rarely even when set as high as 10k
 // with the limiter at 10k, the highest # of solutions found  is 51k, even then the algorithm takes < 1s
-// without the limiter, very rare 'recursion rabbitholes' would find as many as 4.6million solutions to one chain, > 1min30sec
+// without the limiter, very rare 'recursion rabbitholes' would find as many as 4.6million solutions to one chain, > 90sec
 #define RECURSION_SAFETY_LIMITER	10000 
 // when the 'safety valve' is tripped, try X scenarios at each level of recursion, no more
 // probably should only be either 2 or 3

@@ -62,18 +62,12 @@ struct solutionobj {
 
 // NOTE: could be a tuple/threeple, but its cleaner this way
 // used in 'perfectmode' to count how many times a cell is flagged
-// TODO: is there any point to having "allocs_encompassed" for each cell? it should always be the same across the board, right?
-//		first try it this way, then try reducing it
 struct aggregate_cell {
 	aggregate_cell();
 	aggregate_cell(class cell * newme, int newtf);
-	aggregate_cell(class cell * newme, int newtf, int newof);
 
 	class cell * me;
 	int times_flagged;
-	int outof; // TODO: remove this after I verify its useless
-
-	float risk(); // TODO: after outof is removed, need to delete this?
 };
 
 
@@ -96,12 +90,9 @@ struct podwise_return {
 	inline int size();
 	inline float efficiency();
 	float avg();
-	//struct solutionobj * prmax();
-	//struct solutionobj * prmin();
 	float max_val();
 	float min_val();
 	int total_alloc();
-	void add_aggregate(class cell * newcell, int times_flagged, int outof);
 	void add_aggregate(class cell * newcell, float times_flagged);
 };
 
@@ -210,7 +201,7 @@ inline int factorial(int x);
 // functions for the recursive smartguess method(s)
 int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * thingsdone);
 int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return> * prvect, std::list<class cell *> * interior_list, int * thingsdone);
-int smartguess(struct chain * master_chain, struct game_stats * gstats, int * thingsdone);
+int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag);
 struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, struct chain * mychain, bool use_endsolver);
 
 

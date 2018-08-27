@@ -16,16 +16,12 @@ MS_solver.cpp, MS_solver.h
 
 
 // testing
-// TODO: test smartguess algorithm winrate with border risk determined via max/min/average of the various contributing pods
+// done: test smartguess algorithm winrate with border risk determined via max/min/average of the various contributing pods
 //		^ results are that min is bad, avg/max are roughly equal
-// TODO: test smartguess algorithm speed/accuracy with choosing a pod in the middle (rand), or in the 'front'
-// TODO: re-test 'weighted avg' option for speed/accuracy/winrate now that the rest of the algorithm works good, 100k games
+// done: re-test 'weighted avg' option for speed/accuracy/winrate now that the rest of the algorithm works good, 100k games
 //		^ results inconclusive, unweighted has slight improvement maybe? 18.4 vs 18.6, within range of uncertainty
-// TODO: re-test algorithm speed/accuracy with different chain recheck level values
 
 // possibly hard
-// TODO: let smartguess find and apply only the concrete parts of a potential solution within a chain? IDEA: apply any flags that are shared
-//		by ALL min or max solutions, when there are multiple min or max solutions?
 // TODO: maybe have smartguess give preference to cells nearer the border, as a tie-breaker? if the risk is the same, might as well
 //		go for something with a greater reward
 
@@ -62,7 +58,6 @@ MS_solver.cpp, MS_solver.h
 #include <chrono> // used to seed the RNG because time(0) only has 1-second resolution
 #include <random> // because I don't like using sequential seeds, or waiting when going very fast
 #include <Windows.h> // needed to test for and create LOGS directory
-// TODO: Windows.h adds the actual max() and min() macros, maybe scan the code and see if I can put them in somewhere
 
 
 #include "MS_settings.h"
@@ -401,7 +396,6 @@ inline int play_game() {
 
 			if (action != 0) {	// if something happened, then accumulate and don't break
 				numactions += action;
-				mygamestats.began_solving = true;
 			} else {			// if nothing changed, then break the loop
 				break;
 			}
@@ -422,7 +416,6 @@ inline int play_game() {
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		// begin two-cell logic (loops 6 times at most before returning to singlecell, configurable)
 		numactions = 0;
-		//std::list<class cell *> clearlist; std::list<class cell *> flaglist;
 		int numloops = 0;
 		while (1) {
 			action = 0; 
@@ -446,34 +439,10 @@ inline int play_game() {
 				// strategy 5: nonoverlap-safe
 				r = strat_nonoverlap_safe(me, &mygamestats, &action);
 				if (r == -1) { return -1; } // unexpected game loss, should be impossible!
-				
-				
-				/* // QUEUEING 
-				r = strat_121_cross_Q(me, &mygamestats, &clearlist);
-				r = strat_nonoverlap_flag_Q(me, &mygamestats, &flaglist);
-				r = strat_nonoverlap_safe_Q(me, &mygamestats, &clearlist);
-				*/
 			}}
-			
-			/* // QUEUEING
-			for (std::list<class cell *>::iterator cit = clearlist.begin(); cit != clearlist.end(); cit++) {
-				r = mygame.reveal(*cit);
-				if (r == -1) { return -1; } // unexpected game loss, should be impossible!
-				action += r;
-			}
-			for (std::list<class cell *>::iterator fit = flaglist.begin(); fit != flaglist.end(); fit++) {
-				r = mygame.set_flag(*fit);
-				if (r == 1) {// game won!
-					sprintf_s(buffer, "m%i ", (numactions + action));
-					mygamestats.trans_map += buffer;
-					return 1;
-				}
-				action++;
-			}*/
-			
+						
 			if (action != 0) {
 				numactions += action;
-				mygamestats.began_solving = true;
 				numloops++;
 				if (numloops >= TWOCELL_LOOP_CUTOFF) { break; }
 			} else {
@@ -500,11 +469,6 @@ inline int play_game() {
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			// begin GUESSING phase
 
-			int winorlose = 10; // 10=continue, -1=unexpected loss, 0=normal loss, 1=win
-			char trans_map_char = '0';
-			int trans_map_val = 0;
-			bool isaguess = false;
-
 			/* new guessing phase structure:
 			if zeroguess
 				do it
@@ -518,10 +482,7 @@ inline int play_game() {
 					trans_map_val = action#, set trans_map_char, consecutiveguesses=0
 				else if nothing was flagged/cleared,
 					smartguess
-					if just a guess,
-						isaguess=true, set trans_map_char
-					else if endsolver activated,
-						trans_map_val = action#, set trans_map_char, consecutiveguesses=0
+					(may return as guess, multicell, or endsolver)
 			if isaguess
 				inc guesses, set trans_map_val = guesses
 				trans_map erase prev
@@ -530,11 +491,16 @@ inline int play_game() {
 			*/
 
 
+			int winorlose = 10; // 10=continue, -1=unexpected loss, 0=normal loss, 1=win
+			char trans_map_char = '0';
+			int trans_map_val = 0;
+			bool isaguess = false;
+
 
 			// actually guess, one of 5 endpoints...
 			// To win when guessing, if every guess is successful, it will reveal information that the SC/MC
 			// logic will use to place the final flags. So, the only way to win is by revealing the right safe places.
-			if ((FIND_EARLY_ZEROS_var) && (mygame.zerolist.size()) && (mygamestats.began_solving == false)) {
+			if ((FIND_EARLY_ZEROS_var) && (mygame.zerolist.size()) && (mygame.get_mines_remaining() != myruninfo.get_NUM_MINES())) {
 				// option A: reveal one cell from the zerolist... game loss probably not possible, but whatever
 				r = mygame.reveal(rand_from_list(&mygame.zerolist));
 				if (r == -1) {
@@ -553,28 +519,20 @@ inline int play_game() {
 				trans_map_char = 'r'; isaguess = true;
 			} else {
 				// option C: smart-guess
-				// note: with random-guessing, old smartguess, it will only return 1 cell to clear
-				// with NEW smartguess, it will usually return 1 cell to clear, but it may return several to clear or several to flag
+				// note: any clearing/flagging is done inside smartguess, only returns the gamestate after and a flag to identify what logic was used
 
-				struct chain fullchain = chain();
-				r = strat_multicell_logic_and_chain_builder(&fullchain, &trans_map_val);
-				// TODO: combine multicell into smartguess just for cleanliness' sake? would need additional arg to get out what mode it concluded in
-				// if win, return 1; if lose, return as unexpeced loss -1; in either case, trans_map_val should be nonzero
-				// return->stored	1->1	-1->-1		0->not stored, continue
-				if (r != 0) { winorlose = r; }
-				if (trans_map_val != 0) {	// if something was flagged/cleared, 
+				int modeflag = 0; // 0=guess, 1=multicell, 2=endsolver
+				r = smartguess(&mygamestats, &trans_map_val, &modeflag);
+				// if win, return 1; if lose, return as EXPECTED loss 0 or unexpected loss -1
+				// return->stored		1->1		-1->0		-2->-1		0->not stored, continue
+				if (r == 1) { winorlose = 1; } else if (r < 0) { winorlose = r + 1; }
+				if (modeflag == 1) { // multicell
 					trans_map_char = 'M';
-				} else {					// if nothing was flagged/cleared, continue with smartguess
-					r = smartguess(&fullchain, &mygamestats, &trans_map_val);
-					// if win, return 1; if lose, return as EXPECTED loss 0 or unexpected loss -1
-					// return->stored		1->1		-1->0		-2->-1		0->not stored, continue
-					if (r == 1) { winorlose = 1; } else if (r < 0) { winorlose = r + 1; }
-					if (trans_map_val == 0) { // if it was a guess,
-						trans_map_char = '^'; isaguess = true;
-					} else { // if it was the endsolver mode OR found 100% / 0% by aggregate info,
-						trans_map_char = 'E';
-					}
-				}				
+				} else if (modeflag == 2) { // if it was the endsolver mode OR found 100% / 0% by aggregate info,
+					trans_map_char = 'E';
+				} else { // just a guess
+					trans_map_char = '^'; isaguess = true;
+				}
 			}
 
 			// handle stats and trans_map in a modular way, so this block handles any of the branches it may take above
@@ -716,9 +674,9 @@ int main(int argc, char *argv[]) {
 			// ................................. unused
 			myrunstats.num_guesses_in_losses += mygamestats.num_guesses;
 			myrunstats.total_luck_in_losses += mygamestats.luck_value_mult;
-			if (mygamestats.began_solving == false) {
-				myrunstats.games_lost_beginning++;
-			}
+			//if (mygamestats.began_solving == false) {
+			//	myrunstats.games_lost_beginning++;
+			//}
 			float remaining = float(mygame.get_mines_remaining()) / float(myruninfo.get_NUM_MINES());
 			if (remaining > 0.85) {
 				myrunstats.games_lost_earlygame++; // 0-15% completed

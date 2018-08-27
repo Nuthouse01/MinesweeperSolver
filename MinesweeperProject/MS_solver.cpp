@@ -23,16 +23,11 @@ solutionobj::solutionobj(float ans, int howmany) {
 	allocation.clear(); // init as empty list
 }
 aggregate_cell::aggregate_cell() {
-	me = NULL; times_flagged = 0; outof = 0;
+	me = NULL; times_flagged = 0;
 }
 aggregate_cell::aggregate_cell(class cell * newme, int newtf) {
-	me = newme; times_flagged = 0;
+	me = newme; times_flagged = newtf;
 }
-aggregate_cell::aggregate_cell(class cell * newme, int newtf, int newof) {
-	me = newme; times_flagged = newtf; outof = newof;
-}
-float aggregate_cell::risk() {return (float(times_flagged) / float(outof));}
-
 
 podwise_return::podwise_return() { // construct empty
 	solutions.clear();
@@ -81,7 +76,7 @@ inline struct podwise_return& podwise_return::operator*=(const int& rhs) {
 	// multiply into the values of each aggregate_cell object
 	agg_allocs *= rhs;
 	for (std::list<struct aggregate_cell>::iterator aggit = agg_info.begin(); aggit != agg_info.end(); aggit++) { 
-		aggit->times_flagged *= rhs; aggit->outof *= rhs;
+		aggit->times_flagged *= rhs;
 	}
 	return *this;
 }
@@ -112,14 +107,14 @@ float podwise_return::avg() {
 		}
 	}
 	if (total_weight == 0) {
-		myprintfn(2, "ERR: IN AVG, ALL SCENARIOS FOUND ARE TOO BIG\n");
-		// TODO: decide whether to return 0 or mines_remaining
-		return 0.;
+		// this should be impossible
+		myprintfn(2, "ERR: IN AVG, ALL SCENARIOS FOUND ARE TOO BIG\n"); assert(0); return 0.;
 	}
 	return (a / float(total_weight));
 }
 // max_val: find the max 'answer' value from all the solutions in the PR object
 float podwise_return::max_val() {
+	assert(!solutions.empty());
 	float retmax = 0.;
 	for (std::list<struct solutionobj>::iterator solit = solutions.begin(); solit != solutions.end(); solit++) {
 		if (solit->answer <= retmax) { continue; } // existing max is greater
@@ -129,6 +124,7 @@ float podwise_return::max_val() {
 }
 // min_val: find the min 'answer' value from all the solutions in the PR object
 float podwise_return::min_val() {
+	assert(!solutions.empty());
 	float retmin = 100000000.;
 	for (std::list<struct solutionobj>::iterator solit = solutions.begin(); solit != solutions.end(); solit++) {
 		if (solit->answer >= retmin) { continue; }// existing max is greater
@@ -143,22 +139,6 @@ int podwise_return::total_alloc() {
 	return retval;
 }
 // search agg_info for the given cell; if there, inc the data. if not, add it in sorted order
-void podwise_return::add_aggregate(class cell * newcell, int times_flagged, int outof) {
-	// use the compare function to step through the list until i find the existing cell (or where it should be)
-	int r = 0;
-	for (std::list<struct aggregate_cell>::iterator pos = agg_info.begin(); pos != agg_info.end(); pos++) {
-		r = compare_two_cells(newcell, pos->me); // if a goes first, return negative
-		if (r < 0) {// insert
-			agg_info.insert(pos, aggregate_cell(newcell, times_flagged, outof)); return;
-		}
-		if (r == 0) {// combine
-			pos->outof += outof;
-			pos->times_flagged += times_flagged; return;
-		}
-	}
-	// if it falls out of the loop, then either list is empty or newcell should be added to end
-	agg_info.push_back(aggregate_cell(newcell, times_flagged, outof));
-}
 void podwise_return::add_aggregate(class cell * newcell, float times_flagged) {
 	// use the compare function to step through the list until i find the existing cell (or where it should be)
 	int r = 0;
@@ -605,13 +585,13 @@ inline int factorial(int x) {
 // smartguess functions
 /*
 ROADMAP: the 11-step plan to total victory! (does not include numbered sub-steps of podwise_recurse or endsolver)
-strat_multicell_logic_and_chain_builder {
-	1)build the pods from visible, allow for dupes, no link cells yet. is stored in the "master chain".
-	2)iterate over pods, check for dupes and subsets, apply *multicell logic* (call extract_overlap on each pod with root in 5x5 around my root)
-	note if a pod becomes 100% or 0%, loop until no changes happen
-	3)if any pods became 100% or 0%, clear/flag those, don't continue on to rest of smartguess
-}
 smartguess {
+	strat_multicell_logic_and_chain_builder {
+		1)build the pods from visible, allow for dupes, no link cells yet. is stored in the "master chain".
+		2)iterate over pods, check for dupes and subsets, apply *multicell logic* (call extract_overlap on each pod with root in 5x5 around my root)
+		note if a pod becomes 100% or 0%, loop until no changes happen
+		3)if any pods became 100% or 0%, clear/flag those and return (don't continue on to rest of smartguess)
+	}
 	4)iterate again, removing pod contents from 'interior_list'. Done here so there are fewer dupe pods, less time searching
 	if (!interior_list.empty() || use_endsolver || use_smartguess) {
 		5)iterate again, building links to anything within 5x5 that shares contents
@@ -799,26 +779,22 @@ int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * things
 
 	// NOTE: turns out that you can't safely apply 121 logic to the chain
 
+	// step 3: clear the clearme and flag the flagme
 	if (clearme.size() || flagme.size()) {
 		if (myruninfo.SCREEN == 3) myprintfn(2, "DEBUG: in multicell, found %i clear and %i flag\n", clearme.size(), flagme.size());
-	}
-
-	// step 3: clear the clearme and flag the flagme
-	for (std::list<class cell *>::iterator cit = clearme.begin(); cit != clearme.end(); cit++) { // clear-list
-		int r = mygame.reveal(*cit);
-		if (r == -1) {
-			myprintfn(2, "ERR: Unexpected loss during multicell logic reveal, must investigate!!\n");
-			assert(0);
-			return -1;
+		for (std::list<class cell *>::iterator cit = clearme.begin(); cit != clearme.end(); cit++) { // clear-list
+			int r = mygame.reveal(*cit);
+			*thingsdone += bool(r);
+			if (r == -1) {
+				myprintfn(2, "ERR: Unexpected loss during multicell logic reveal, must investigate!!\n"); assert(0); return -2;
+			}
 		}
-		*thingsdone += r;
+		for (std::list<class cell *>::iterator fit = flagme.begin(); fit != flagme.end(); fit++) { // flag-list
+			int r = mygame.set_flag(*fit);
+			(*thingsdone)++;
+			if (r == 1) { return 1; } // game won!
+		}
 	}
-	for (std::list<class cell *>::iterator fit = flagme.begin(); fit != flagme.end(); fit++) { // flag-list
-		int r = mygame.set_flag(*fit);
-		(*thingsdone)++;
-		if (r == 1) { return 1; } // game won!
-	}
-
 	return 0;
 }
 
@@ -1012,19 +988,24 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 // laboriously determine the % risk of each unknown cell and choose the one with the lowest risk to reveal
 // can completely solve the puzzle, too; if it does, it clears/flags everything it knows for certain
 // doesn't return cells, instead clears/flags them internally
-// needs to somehow pass out info about whether it guessed or tried to solve a chain, and how many
+// modeflag: 0=guess, 1=multicell, 2=endsolver
 // return: 1=win/-1=loss/0=continue/-2=unexpected loss (winning is unlikely but possible)
-int smartguess(struct chain * master_chain, struct game_stats * gstats, int * thingsdone) {
+int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag) {
 	static struct riskholder myriskholder(myruninfo.get_SIZEX(), myruninfo.get_SIZEY());
 	std::list<class cell *> interior_list = mygame.unklist;
 
-
-
+	struct chain master_chain = chain();
+	// steps 1/2/3 are done inside this function
+	int r = strat_multicell_logic_and_chain_builder(&master_chain, thingsdone);
+	if (*thingsdone != 0) {
+		*modeflag = 1;
+		return r;
+	}
 
 
 	// step 4: now that master_chain is refined, remove pod contents (border unk) from interior_unk
 	// will still have some dupes (link cells) but much less than if I did this earlier
-	for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
+	for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
 		for (int i = 0; i < podit->size(); i++) {
 			interior_list.remove(podit->cell_list[i]); // remove from interior_list by value (find and remove)
 		}
@@ -1039,8 +1020,8 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 	if (!interior_list.empty() || use_endsolver || (GUESSING_MODE_var == 2)) {
 
 		// step 5: iterate again, building links to anything within 5x5(only set MY links)
-		for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
-			std::vector<std::list<struct pod>::iterator> around = master_chain->get_5x5_around(podit, true); // INCLUDE THE CORNERS
+		for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
+			std::vector<std::list<struct pod>::iterator> around = master_chain.get_5x5_around(podit, true); // INCLUDE THE CORNERS
 			for (int i = 0; i < around.size(); i++) {
 				// for each pod 'otherpod' with root within 5x5 found...
 				std::vector<std::vector<class cell *>> n = extract_overlap(podit->cell_list, around[i]->cell_list);
@@ -1052,10 +1033,10 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		}
 
 		// step 6: identify chains and sort the pods into a VECTOR of chains... 
-		int numchains = master_chain->identify_chains();
+		int numchains = master_chain.identify_chains();
 		// smartguess/normal: turn "cell_list" into a simple number, and clear the actual list so it uses less memory while recursing
 		// other modes: retain the cell_list information
-		listofchains = master_chain->sort_into_chains(numchains, !(use_endsolver || (GUESSING_MODE_var == 2)));
+		listofchains = master_chain.sort_into_chains(numchains, !(use_endsolver || (GUESSING_MODE_var == 2)));
 
 		// step 7: for each chain, recurse (depth, chain, mode are only arguments) and get back list of answer allocations
 		// handle the multiple podwise_retun objects, just sum their averages
@@ -1082,6 +1063,7 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 			int p = strat_endsolver_and_solution_reducer_logic(&retholder, &interior_list, thingsdone);
 			if (*thingsdone) {
 				if (myruninfo.SCREEN == 3) myprintfn(2, "ENDSOLVER: did something!!\n");
+				*modeflag = 2;
 				return p;
 			}
 		}
@@ -1131,7 +1113,7 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		// Option A: the risk for each individual cell is the avg/max risk from any of the pods it belongs to
 		// smartguess/normal and smartguess/endsolver
 		// iterate over "master chain", storing risk information into 'riskholder' (only read cell_list since it also holds the links)
-		for (std::list<struct pod>::iterator podit = master_chain->podlist.begin(); podit != master_chain->podlist.end(); podit++) {
+		for (std::list<struct pod>::iterator podit = master_chain.podlist.begin(); podit != master_chain.podlist.end(); podit++) {
 			float podrisk = podit->risk();
 			for (int i = 0; i < podit->cell_list.size(); i++) {
 				myriskholder.addrisk(podit->cell_list[i], podrisk);
@@ -1189,6 +1171,7 @@ int smartguess(struct chain * master_chain, struct game_stats * gstats, int * th
 		myriskreturn = myriskholder.findminrisk();
 	} else {
 		// flag the flagme and clear the clearme and RETURN
+		*modeflag = 2;
 		if (myruninfo.SCREEN == 3) myprintfn(2, "DEBUG: from aggregate data, found %i clear and %i flag (but counts as endsolver)\n", clearmelist.size(), flagmelist.size());
 		for (std::list<class cell *>::iterator cit = clearmelist.begin(); cit != clearmelist.end(); cit++) { // clear-list
 			*thingsdone += 1;
@@ -1288,7 +1271,7 @@ struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, 
 			r.agg_allocs = c;
 			// for each cell in the pod, add its info
 			for (int i = 0; i < s; i++) {
-				r.add_aggregate(mychain->podlist.front().cell_list[i], r.agg_allocs * m / s, r.agg_allocs);
+				r.add_aggregate(mychain->podlist.front().cell_list[i], float(m) / float(s));
 			}
 			return r;
 		} else if (use_smartguess && use_endsolver) {
@@ -1437,7 +1420,7 @@ struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, 
 			// dont need to calculate c or multiply thru thislvl, already set above...
 			// for each cell remaining in the pod, add its info
 			for (int i = 0; i < frontpod->size(); i++) {
-				thislvl.add_aggregate(frontpod->cell_list[i], thislvl.agg_allocs * frontpod->mines / frontpod->size(), thislvl.agg_allocs);
+				thislvl.add_aggregate(frontpod->cell_list[i], float(frontpod->mines) / float(frontpod->size()));
 			}
 		} else if (use_smartguess && use_endsolver) {
 			// if perfectmode/endsolver, 
@@ -1543,7 +1526,7 @@ struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, 
 						thislvl *= c; // multiply in the multiple allocations
 						// for each cell remaining in the pod, add its info
 						for (int i = 0; i < activepod->size(); i++) {
-							thislvl.add_aggregate(activepod->cell_list[i], thislvl.agg_allocs * activepod->mines / activepod->size(), thislvl.agg_allocs);
+							thislvl.add_aggregate(activepod->cell_list[i], float(activepod->mines) / float(activepod->size()));
 						}
 					} else if (use_smartguess && use_endsolver) {
 						// perfectmode/endsolver: assume multiple branches exist, create more here, don't mult allocs_encompassed thru (force it to be 1)
@@ -1585,7 +1568,7 @@ struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, 
 					}
 				} else if (use_smartguess && !use_endsolver) {
 					// perfectmode/normal, add to aggregate data as flagged
-					thislvl.add_aggregate(sharedcell, thislvl.agg_allocs, thislvl.agg_allocs);
+					thislvl.add_aggregate(sharedcell, 1);
 				} else if (use_smartguess && use_endsolver) {
 					// perfectmode/endsolver, assume multiple branches exist, add this onto all
 					thislvl += sharedcell;
@@ -1593,7 +1576,7 @@ struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, 
 			} else if (thislinkwassuccesfullyclearedandremovedfromapod) {
 				// add to aggregate data as cleared
 				if (use_smartguess && !use_endsolver) {
-					thislvl.add_aggregate(sharedcell, 0, thislvl.agg_allocs);
+					thislvl.add_aggregate(sharedcell, 0);
 				}
 			}
 		}// end of iteration on links_to_flag_or_clear
@@ -1688,17 +1671,11 @@ struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, 
 				if (equivalent_aggregate_cell(*a, *b)) {
 					// combine a into b
 					b->times_flagged += a->times_flagged;
-					b->outof += a->outof;
 					a = retval.agg_info.erase(a); // both delete a and advance
 				} else {
 					a++; b++;
 				}
 			}
-		}
-
-		// assert that the 'outof' member is always exactly equal to 'agg allocs'
-		for (std::list<struct aggregate_cell>::iterator w = retval.agg_info.begin(); w != retval.agg_info.end(); w++) {
-			assert(w->outof == retval.agg_allocs);
 		}
 	}
 

@@ -29,8 +29,6 @@ struct game_stats {
 	// s#=single-cell, t#=two-cell, M#=pre-smartguess multicell logic, W=win, X=lose, 
 	// ^#=smartguess, r#=randomguess, z#=zeroguess, A#=chain-solver
 	std::string trans_map;
-	bool began_solving; // did I begin solving things, or did I lose before anything could be done?
-	// TODO: if histogram is implemented and zerolist option is gone, this could be safely eliminated
 
 	int smartguess_attempts;
 	float smartguess_diff;

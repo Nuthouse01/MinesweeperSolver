@@ -20,7 +20,6 @@ game_stats::game_stats() {
 	strat_nov_safe = 0;
 	strat_nov_flag = 0;
 	num_guesses = 0;
-	began_solving = false;
 	smartguess_attempts = 0;
 	smartguess_diff = 0.;
 	smartguess_valves_tripped = 0;

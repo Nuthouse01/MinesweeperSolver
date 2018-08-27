@@ -63,7 +63,6 @@ Note that the speed drops drastically when the program is printing each stage to
 
 /////////////////////////////////////////////////////////////////////////
 "Transition map" key
-TODO: update this!!
 
 The transition map is a string built as the algorithm is running. It indicates
 the order in which the solver stages were used, and how much was done in each stage.
@@ -82,8 +81,8 @@ t#		number of cells flagged/revealed in two-cell logic
 r#		number of consecutive random guesses made
 z#		number of consecutive "cheaty" zero-guesses made, only until solver can solve something
 ^#		number of consecutive smart-guesses made
-M#		number of cells flagged/revealed in multi-cell logic when optimizing the chain before
-			a smartguess (this uses an improved version of two-cell logic)
+M#		number of cells found definitely flag or definitely clear in multi-cell logic when optimizing 
+				the chain before a smartguess (this uses an improved version of two-cell logic)
 E#		number of cells that the endsolver (inside smartguess) found definitely flag or definitely clear
 
 
