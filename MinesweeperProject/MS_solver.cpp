@@ -825,7 +825,6 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 	for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
 		num_sol_start += priter->solutions.size();
 	}
-	int retval = 0; // win/loss/continue return value
 	int minesval = mygame.get_mines_remaining();
 
 	bool checkminimums = true, checkmaximums = true; // flags
@@ -899,14 +898,13 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 				for (std::list<class cell *>::iterator celliter = priter->solutions.front().allocation.begin(); celliter != priter->solutions.front().allocation.end(); celliter++) {
 					int r = mygame.set_flag(*celliter);
 					*thingsdone += bool(r);
-					if (r == -1) { retval = 1; }
+					if (r == -1) { return 1; } else if (r == 2) { assert(0); return -2; }
 				}
 			}
 		}
 	}
 
-	// NOTE: if this successfully gets down to only 1 solution and applies it, then it will guaranteed be picked up below as well
-	// need to stop it from doublecounting and doubleincrementing *thingsdone
+	// NOTE: if this successfully gets down to only 1 solution and applies it above, then it will guaranteed be picked up below as well
 
 	float minsum = 0; float maxsum = 0;
 	for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
@@ -937,7 +935,7 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 				for (std::list<class cell *>::iterator celliter = priter->solutions.front().allocation.begin(); celliter != priter->solutions.front().allocation.end(); celliter++) {
 					int r = mygame.set_flag(*celliter);
 					*thingsdone += bool(r);
-					if (r == -1) { retval = 1; }
+					if (r == -1) { return 1; } else if (r == 2) { assert(0); return -2; }
 				}
 			}
 		}
@@ -946,7 +944,7 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 		for (std::list<class cell *>::iterator iiter = interior_list->begin(); iiter != interior_list->end(); iiter++) {
 			int r = mygame.set_flag(*iiter);
 			*thingsdone += bool(r);
-			if (r == -1) { retval = 1; }
+			if (r == -1) { return 1; } else if (r == 2) { assert(0); return -2; }
 		}
 		// for each PR object, 
 		for (std::vector<struct podwise_return>::iterator priter = prvect->begin(); priter != prvect->end(); priter++) {
@@ -965,7 +963,7 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 				for (std::list<class cell *>::iterator celliter = priter->solutions.front().allocation.begin(); celliter != priter->solutions.front().allocation.end(); celliter++) {
 					int r = mygame.set_flag(*celliter);
 					*thingsdone += bool(r);
-					if (r == -1) { retval = 1; }
+					if (r == -1) { return 1; } else if (r == 2) { assert(0); return -2; }
 				}
 			}
 		}
@@ -980,7 +978,7 @@ int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return
 		int num_sol_eliminated = checkminelim + checkmaxelim + checkallminelim + checkallmaxelim;
 		if (num_sol_eliminated) myprintfn(2, "ENDSOLVER: eliminated %i / %i solutions, %f%%\n", num_sol_eliminated, num_sol_start, 100. * float(num_sol_eliminated) / float(num_sol_start));
 	}
-	return retval;
+	return 0;
 }
 
 
@@ -1052,9 +1050,9 @@ int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag) {
 			struct podwise_return asdf = podwise_recurse(0, 0, &(listofchains[s]), use_endsolver);
 			border_allocation += asdf.avg();
 			if (use_endsolver || (GUESSING_MODE_var == 2)) { retholder[s] = asdf; } // store the podwise_return obj for later analysis
-
-			if ((myruninfo.SCREEN == 3) || recursion_safety_valve) myprintfn(2, "DEBUG: in smart-guess, chain %i with %i pods found %i answers\n", s, listofchains[s].podlist.size(), asdf.size());
-			if (myruninfo.SCREEN == 3) myprintfn(2, "DEBUG: in smart-guess, chain %i ran with %.3f%% efficiency\n", s, (100. * asdf.efficiency()));
+			if (recursion_safety_valve) { myprintfn(2, "WARNING: in smart-guess, chain %i aborted recursion early, might return incomplete/misleading data!\n", s); }
+			if ((myruninfo.SCREEN == 3) || recursion_safety_valve) { myprintfn(2, "DEBUG: in smart-guess, chain %i with %i pods found %i answers\n", s, listofchains[s].podlist.size(), asdf.size()); }
+			if (myruninfo.SCREEN == 3) { myprintfn(2, "DEBUG: in smart-guess, chain %i ran with %.3f%% efficiency\n", s, (100. * asdf.efficiency())); }
 			gstats->smartguess_valves_tripped += recursion_safety_valve;
 		}
 
@@ -1153,8 +1151,9 @@ int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag) {
 			}
 			// perfectmode/endsolver and perfectmode/normal
 			// calculate actual risk percentage for each cell from the aggregate info structure
-			// also identify if any cells are 0% or 100%
+			// also identify if any cells are flagged in EVERY solution, or in NO solutions
 			// each PR object is guaranteed to not overlap with any others
+			assert(retholder[a].total_alloc() == retholder[a].agg_allocs);
 			for (std::list<struct aggregate_cell>::iterator aggit = retholder[a].agg_info.begin(); aggit != retholder[a].agg_info.end(); aggit++) {
 				float cellrisk = 100. * float(aggit->times_flagged) / float(retholder[a].agg_allocs);
 				assert(cellrisk <= 100.);
@@ -1169,11 +1168,11 @@ int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag) {
 			}
 		}
 	}
-	if (flagmelist.empty() && clearmelist.empty()) {
-		// find the lowest risk of anything i've entered into the riskholder, as well as the cells that correspond to it
-		// also clears/resets the myriskholder object for next time
-		myriskreturn = myriskholder.findminrisk();
-	} else {
+	// find the lowest risk of anything i've entered into the riskholder, as well as the cells that correspond to it
+	// also clears/resets the myriskholder object for next time
+	// need to do this unconditionally so the struct is clear for use next time!!
+	myriskreturn = myriskholder.findminrisk();
+	if (flagmelist.size() || clearmelist.size()) {
 		// flag the flagme and clear the clearme and RETURN
 		*modeflag = 2;
 		if (myruninfo.SCREEN == 3) myprintfn(2, "DEBUG: from aggregate data, found %i clear and %i flag (but counts as endsolver)\n", clearmelist.size(), flagmelist.size());
@@ -1186,7 +1185,7 @@ int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag) {
 		for (std::list<class cell *>::iterator fit = flagmelist.begin(); fit != flagmelist.end(); fit++) { // flag-list
 			int r = mygame.set_flag(*fit);
 			*thingsdone += bool(r);
-			if (r == -1) { return 1; } // game won!
+			if (r == -1) { return 1; } else if (r == 2) { assert(0); return -2; }
 		}
 		return 0;
 	}
@@ -1195,7 +1194,7 @@ int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag) {
 
 
 	// step 11: decide between border and interior, call 'rand_from_list' and return
-	if (myruninfo.SCREEN == 3) myprintfn(2, "DEBUG: in smart-guess, interior_risk = %.3f, border_risk = %.3f\n", interior_risk, myriskreturn.first);
+	if (myruninfo.SCREEN == 3) myprintfn(2, "DEBUG: in smart-guess, interior_risk = %.3f%%, border_risk = %.3f%%\n", interior_risk, myriskreturn.first);
 	//if (interior_risk == 100.) {
 	//	// unlikely but plausible (note: if interior is empty, interior_risk will be set at 150)
 	//	// this is eclipsed by the 'maxguess' section, unless this scenario happens before the end-game

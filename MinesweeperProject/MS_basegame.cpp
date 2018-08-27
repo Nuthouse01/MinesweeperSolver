@@ -145,13 +145,13 @@ int game::reveal(class cell * revealme) {
 
 // flag: sets as flagged, reduces # remaining mines, reduce "effective" values of everything visible around it
 // return 1=win, 0=continue. if not an actual mine, dump error messages and try to abort
-// NEW: return -1=win, 0=nothing happened, 1=flagged a cell
+// NEW: return -1=win, 0=nothing happened, 1=flagged a cell, 2=flagged a non-mine cell
 int game::set_flag(class cell * flagme) {
 	if (flagme->status != UNKNOWN) { return 0; }
 
 	// check if it flagged a non-mine square, and if so, why?
 	if (flagme->value != MINE) {
-		myprintfn(2, "ERR: FLAGGED A NON-MINE CELL\n"); assert(0); system("pause");
+		myprintfn(2, "ERR: FLAGGED A NON-MINE CELL\n"); return 2;
 	}
 
 	unklist.remove(flagme);
@@ -178,22 +178,20 @@ int game::set_flag(class cell * flagme) {
 					// assert that every mine is flagged
 					if (v->status != FLAGGED) {
 						myprintfn(2, "ERR: IN WIN VALIDATION, FOUND AN UNFLAGGED MINE\n");
-						assert(v->status == FLAGGED);
+						assert(0);
 					}
 				}
 				if (v->value != MINE) {
 					// assert that every not-mine is not-flagged
 					if (v->status == FLAGGED) {
 						myprintfn(2, "ERR: IN WIN VALIDATION, FOUND A FLAGGED NOT-MINE\n");
-						assert(v->status != FLAGGED);
+						assert(0);
 					}
 				}
 			}
 		}
-		// officially won!
-		return -1;
+		return -1; // officially won!
 	}
-
 	return 1; // successfully flagged a cell
 }
 

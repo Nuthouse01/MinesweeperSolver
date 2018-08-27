@@ -19,7 +19,7 @@ X/Y/mines
 
 // #defines
 // sets the "default values" for each setting
-#define NUM_GAMES_def				10000
+#define NUM_GAMES_def				5000000
 #define SIZEX_def					30
 #define SIZEY_def					16
 #define NUM_MINES_def				85
@@ -35,7 +35,9 @@ X/Y/mines
 // 3: lots of extra smartguess debug info, everything to screen & log
 #define SCREEN_def					3
 // if SPECIFY_SEED = 0, will generate a new seed from current time
-#define SPECIFY_SEED_def			1045245653
+#define SPECIFY_SEED_def			1254336094
+
+
 
 #define HISTOGRAM_RESOLUTION		15
 #define HISTOGRAM_MAX_HORIZ_SIZE	40

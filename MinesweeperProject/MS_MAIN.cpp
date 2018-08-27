@@ -698,6 +698,7 @@ int main(int argc, char *argv[]) {
 			}
 		} else if (r == -1) {
 			myrunstats.games_lost_unexpectedly++;
+			assert(0);
 		}
 
 		// print/log single-game results (also to console if #debug)
