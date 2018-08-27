@@ -149,5 +149,5 @@ v5.0:	Bugfix: fixed some 'clear' cells not being added to aggregate data
 		Actually eliminated the 'began_solving' member
 		Deleted some 'todo' statements
 		NOTE: I need to accept that data coming back from the recursion is not guaranteed to be complete, and may mislead me!
-			If something guaranteed isn't actually guaranteed, then check if the chain exceeded the 'safety valve' threshold!
+			Display extra warning when valve is triggered; if something 'guaranteed' fails, have assert() and return -2 but no 'pause'
 		
