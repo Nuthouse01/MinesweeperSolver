@@ -532,9 +532,8 @@ bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::
 bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
 	return (compare_list_of_scenarios(a, b) == 0);
 }
-inline int compare_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return compare_two_cells(a.me, b.me);}
-bool sort_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return (compare_aggregate_cell(a, b) < 0);}
-bool equivalent_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return (compare_aggregate_cell(a, b) == 0);}
+bool sort_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return (compare_two_cells(a.me, b.me) < 0);}
+bool equivalent_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return (compare_two_cells(a.me, b.me) == 0);}
 
 
 
@@ -1016,7 +1015,7 @@ int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag) {
 	float interior_risk = 150.;
 	std::vector<struct podwise_return> retholder;	// holds the podwise_return objects I got back from recursion
 	std::vector<struct chain> listofchains;			// holds each separate chain once they're linked and stuff
-	bool use_endsolver = (mygame.get_mines_remaining() <= SMARTGUESS_ENDSOLVER_THRESHOLD_def);
+	bool use_endsolver = (mygame.get_mines_remaining() <= SMARTGUESS_ENDSOLVER_THRESHOLD);
 
 	// if there are no interior cells AND it is not near the endgame, then skip the recursion
 	if (!interior_list.empty() || use_endsolver || (GUESSING_MODE_var == 2)) {

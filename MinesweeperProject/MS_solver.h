@@ -187,7 +187,6 @@ bool sort_scenario_blind(std::list<struct link>::iterator a, std::list<struct li
 inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
 bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
 bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
-inline int compare_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b);
 bool sort_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b);
 bool equivalent_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b);
 

@@ -17,6 +17,8 @@
 
 // essential stuff like # of games to play, field size, # of mines, etc
 // this info is not at all secretive; shouldn't be changed after the runs begin, but you can't cheat by using or changing this info.
+// TODO: for even more security, make the 'game' object a private member of runinfo with an accessor function? it's an idea
+// or perhaps make 'runinfo' a member of 'game' object in the same way???
 class runinfo {
 private:
 	int SIZEX; // these 3 can be set only once, but can be read whenever

@@ -144,10 +144,13 @@ v5.0:	Bugfix: fixed some 'clear' cells not being added to aggregate data
 		Bugfix: will now detect if a scenario forces an invalid configuration somewhere down the line by checking for contradictory instructions in the pipeline
 		Fixed the roadmap, finally
 		Replaced 'use random' and 'use perfectmode' flags with just one, 'GUESSING_MODE_var'
-		
 		Actually eliminated the 'outof' member
 		Actually eliminated the 'began_solving' member
 		Deleted some 'todo' statements
 		NOTE: I need to accept that data coming back from the recursion is not guaranteed to be complete, and may mislead me!
 			Display extra warning when valve is triggered; if something 'guaranteed' fails, have assert() and return -2 but no 'pause'
 		
+v5.1:	Bugfix: turns out my most basic sorting function was backwards from how I intended
+		Raised endsolver threshold from 8 to 14, minimal effect on time, but peak memory usage jumped from 2MB to 11MB
+
+

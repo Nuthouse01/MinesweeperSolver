@@ -359,8 +359,9 @@ void myprintfn(int p, const char* fmt, ...) {
 
 
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
+// I want cells to be sorted in reading-order, where 0,0 is top-left, +x is right and +y is down...
 inline int compare_two_cells(class cell * a, class cell * b) {
-	return ((b->y * myruninfo.get_SIZEX()) + b->x) - ((a->y * myruninfo.get_SIZEX()) + a->x);
+	return ((a->y * myruninfo.get_SIZEX()) + a->x) - ((b->y * myruninfo.get_SIZEX()) + b->x);
 }
 // if a goes before b, return true... needed for consistient sorting
 inline bool sort_by_position(class cell * a, class cell * b) {
@@ -391,6 +392,7 @@ std::vector<std::vector<class cell *>> extract_overlap(std::vector<class cell *>
 
 
 // return a random object from the provided list, or NULL if the list is empty
+// NOTE: i could templatize this function, but A) there's no need to, and B) I'd have to put it in the header
 class cell * rand_from_list(std::list<cell *> * fromme) {
 	if (fromme->empty()) { return NULL; } // NOTE: bad if this is supposed to return an iterator!!
 	int f = rand() % fromme->size();
