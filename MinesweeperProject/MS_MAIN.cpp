@@ -500,7 +500,7 @@ inline int play_game() {
 			// actually guess, one of 5 endpoints...
 			// To win when guessing, if every guess is successful, it will reveal information that the SC/MC
 			// logic will use to place the final flags. So, the only way to win is by revealing the right safe places.
-			if ((FIND_EARLY_ZEROS_var) && (mygame.zerolist.size()) && (mygame.get_mines_remaining() != myruninfo.get_NUM_MINES())) {
+			if (FIND_EARLY_ZEROS_var && mygame.zerolist.size() && (mygame.get_mines_remaining() == myruninfo.get_NUM_MINES())) {
 				// option A: reveal one cell from the zerolist... game loss probably not possible, but whatever
 				r = mygame.reveal(rand_from_list(&mygame.zerolist));
 				if (r == -1) {
