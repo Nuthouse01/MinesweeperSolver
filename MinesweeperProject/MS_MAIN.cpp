@@ -686,6 +686,7 @@ int main(int argc, char *argv[]) {
 		myrunstats.smartguess_attempts_total +=	mygamestats.smartguess_attempts;
 		myrunstats.smartguess_diff_total +=		mygamestats.smartguess_diff;
 		myrunstats.smartguess_valves_tripped_total += mygamestats.smartguess_valves_tripped;
+		myrunstats.games_with_smartguess_valves_tripped += bool(mygamestats.smartguess_valves_tripped);
 		myrunstats.total_luck_per_guess += mygamestats.luck_value_sum;
 
 		// increment run results depending on gamestate and gameresult

@@ -51,6 +51,7 @@ run_stats::run_stats() {
 	smartguess_attempts_total = 0;
 	smartguess_diff_total = 0.;
 	smartguess_valves_tripped_total = 0;
+	games_with_smartguess_valves_tripped = 0;
 	games_with_eights = 0;
 	total_luck_in_wins = 0.; //
 	total_luck_in_losses = 0.; //
@@ -105,6 +106,7 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 		}
 		myprintfn(2, "    Smartguess border est. avg deviation:   %+7.4f\n", (smartguess_diff_total / float(smartguess_attempts_total)));
 		myprintfn(2, "    Smartguess overflow count:           %5i\n", smartguess_valves_tripped_total);
+		myprintfn(2, "    Games with at least 1 overflow:      %5i\n", games_with_smartguess_valves_tripped);
 	}
 
 	myprintfn(2, "Average time per game:                     %8.4f sec\n", (float(elapsed_sec) / float(games_total)));

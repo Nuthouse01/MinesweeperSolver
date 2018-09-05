@@ -78,6 +78,7 @@ struct run_stats {
 	int smartguess_attempts_total;
 	float smartguess_diff_total;
 	int smartguess_valves_tripped_total;
+	int games_with_smartguess_valves_tripped;
 	int games_with_eights;
 
 	float total_luck_in_wins; //
