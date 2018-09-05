@@ -257,13 +257,13 @@ std::list<struct scenario> pod::find_scenarios(bool use_t2_opt) {
 			for (int k = 0; k < i; k++) { // each scenario will have length i
 				buildme.back().push_back(get_link((*retit)[k]));
 			}
-			// sort the scenario blind-wise (ignoring the actual link cell, only looking at the pods it connects to)
+			// sort the links in the scenario blind-wise (ignoring the actual link cell, only looking at the pods it connects to)
 			// this way equiv links (links connected to the same pods) are sequential and can be easily detected
-			if (use_t2_opt) { buildme.back().sort(sort_scenario_blind); }
+			buildme.back().sort(sort_links_blind);
 		}
 
 		// now 'ret' has been converted to 'buildme', list of sorted lists of link-list-iterators
-		if (use_t2_opt) { buildme.sort(sort_list_of_scenarios); }
+		buildme.sort(sort_pre_scenarios);
 		// SECOND-TIER optimization: eliminate scenarios containing the same number of inter-equivalent links
 		// now I have to do my own uniquify-and-also-build-scenario-objects section
 		// but whenever I find a duplicate I combine their allocation numbers and only use one
@@ -274,7 +274,7 @@ std::list<struct scenario> pod::find_scenarios(bool use_t2_opt) {
 		retme_sub.push_back(scenario((*buildit), c));
 		buildit++; // buildit starts at 1, previt starts at 0
 		while (buildit != buildme.end()) {
-			if (use_t2_opt && (compare_list_of_scenarios(*previt, *buildit) == 0)) {
+			if (use_t2_opt && equivalent_pre_scenarios(*previt, *buildit)) {
 				// if they are the same, revise the previous entry
 				retme_sub.back().allocs_encompassed += c;
 			} else {
@@ -503,14 +503,14 @@ inline int compare_list_of_cells(std::list<class cell *> a, std::list<class cell
 }
 // return true if the 1st arg goes before the 2nd arg, return false if 1==2 or 2 goes before 1
 // compare scenarios (lists of cells), while ignoring the shared_cell arg
-// sort_scenario_blind -> compare_list_of_cells -> compare_two_cells
-bool sort_scenario_blind(std::list<struct link>::iterator a, std::list<struct link>::iterator b) {
+// sort_links_blind -> compare_list_of_cells -> compare_two_cells
+bool sort_links_blind(std::list<struct link>::iterator a, std::list<struct link>::iterator b) {
 	return (compare_list_of_cells(a->linked_roots, b->linked_roots) < 0);
 }
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
 // compare lists of scenarios (lists of lists of cells), while ignoring the shared_cell arg
-// compare_list_of_scenarios -> compare_list_of_cells -> compare_two_cells
-inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
+// compare_pre_scenarios -> compare_list_of_cells -> compare_two_cells
+inline int compare_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
 	if (a.size() != b.size())
 		return b.size() - a.size();
 	std::list<std::list<struct link>::iterator>::iterator ait = a.begin();
@@ -524,13 +524,13 @@ inline int compare_list_of_scenarios(std::list<std::list<struct link>::iterator>
 }
 // return true if the 1st arg goes before the 2nd arg, return false if 1==2 or 2 goes before 1
 // intentionally ignores the shared_cell member
-// sort_list_of_scenarios -> compare_list_of_scenarios -> compare_list_of_cells -> compare_two_cells
-bool sort_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
-	return (compare_list_of_scenarios(a, b) < 0);
+// sort_pre_scenarios -> compare_pre_scenarios -> compare_list_of_cells -> compare_two_cells
+bool sort_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
+	return (compare_pre_scenarios(a, b) < 0);
 }
-// equivalent_list_of_scenarios -> compare_list_of_scenarios -> compare_list_of_cells -> compare_two_cells
-bool equivalent_list_of_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
-	return (compare_list_of_scenarios(a, b) == 0);
+// equivalent_pre_scenarios -> compare_pre_scenarios -> compare_list_of_cells -> compare_two_cells
+bool equivalent_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
+	return (compare_pre_scenarios(a, b) == 0);
 }
 bool sort_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return (compare_two_cells(a.me, b.me) < 0);}
 bool equivalent_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return (compare_two_cells(a.me, b.me) == 0);}
@@ -1352,6 +1352,8 @@ struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, 
 
 	// perfectmode needs to NOT use T2 scenario optimization, simply so I can get the data out. 
 	//TODO:	is there a way to detect the equiv links outside the scenario generator so i can know this while still reducing the recursive branching?
+	// finding that a is equivalent to b isn't hard... but then what?
+	// 'thislvl' gets 2 solutions, each holding the allocation... everything below needs to support multiple solutions
 	std::list<struct scenario> scenarios = temp->find_scenarios(!use_smartguess);
 
 	// where results from each scenario recursion are accumulated
