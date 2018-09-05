@@ -583,7 +583,7 @@ inline int factorial(int x) {
 // **************************************************************************************
 // smartguess functions
 /*
-ROADMAP: the 11-step plan to total victory! (does not include numbered sub-steps of podwise_recurse or endsolver)
+ROADMAP: the 11-step plan to total victory! ("11" does not include numbered sub-steps of podwise_recurse or endsolver)
 smartguess {
 	strat_multicell_logic_and_chain_builder {
 		1)build the pods from visible, allow for dupes, no link cells yet. is stored in the "master chain".
@@ -599,13 +599,14 @@ smartguess {
 		podwise_recurse {
 			0: are we done? look for an excuse to return
 			1: chain rescan section (DEPRECATED)
-			2: pick a pod, find all ways to saturate it, termed 'scenarios'. Then, for each scenario,
+			2: pick a pod, find all ways to saturate it, termed 'scenarios'. Then, for each scenario {
 				3a: apply the changes according to the scenario by moving links from chosen pod to links_to_flag_or_clear
 				3b: until links_to_flag_or_clear is empty, iterate! removing the links from any pods they appear in...
 				3c: after each change, see if activepod has become 100/0/disjoint/negative... if so, add its links to links_to_flag_or_clear as flag or clear
 				3d: after dealing with everything the link is connected to, deal with the actual link cell itself
 				4: recurse! when it returns, combine the 'lower' info with 'thislvl' info (VERTICAL combining)
 				5: combine the 'lower' info into 'retval', (HORIZONTAL combining)
+			}
 			6: return 'retval', the combined answer found from of all recursion below this point
 		}
 		8)run the endsolver logic if appropriate, if something is found to be definitely flag/clear then apply them and return from smartguess

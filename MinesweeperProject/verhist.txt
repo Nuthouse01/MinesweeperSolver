@@ -152,5 +152,10 @@ v5.0:	Bugfix: fixed some 'clear' cells not being added to aggregate data
 		
 v5.1:	Bugfix: turns out my most basic sorting function was backwards from how I intended
 		Raised endsolver threshold from 8 to 14, minimal effect on time, but peak memory usage jumped from 2MB to 11MB
+v5.2:	Fixed bug in argument parser and allowed for command-line args to use screen=3 or -1
+		Disabled the end-of-file "pause" for when running in batch mode
+		Added ability to detect if the logfile name already exists, and if it does exist, then pick a different one
+		Changed some text on before-run and after-run printout
+		Added a batch file to run all 6 modes, 1 million games each
 
-
+		LAST THING REMAINING: add reasonable win% and time stats for each of the 6 modes

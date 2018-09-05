@@ -88,15 +88,15 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 
 
 	myprintfn(2, "MinesweeperSolver version %s\n", VERSION_STRING_def);
-	myprintfn(2, "Games used X/Y/mines = %i/%i/%i, mine density = %4.1f%%\n", runinfoptr->get_SIZEX(), runinfoptr->get_SIZEY(), runinfoptr->get_NUM_MINES(),
+	myprintfn(2, "Games used X/Y/mines = %i/%i/%i, mine density = %4.3f%%\n", runinfoptr->get_SIZEX(), runinfoptr->get_SIZEY(), runinfoptr->get_NUM_MINES(),
 		float(100. * float(runinfoptr->get_NUM_MINES()) / float(runinfoptr->get_SIZEX() * runinfoptr->get_SIZEY())));
 	if (FIND_EARLY_ZEROS_var) {
-		myprintfn(2, "Using 'hunting' method = succeed early (uncover only zeroes until solving can begin)\n");
+		myprintfn(2, "Used 'hunting' method = zero-guess (uncover only zeroes until solving gets underway)\n");
 	} else {
 		myprintfn(2, "Used 'hunting' method = human-like (can lose at any stage)\n");
 	}
 	if (GUESSING_MODE_var == 0) {
-		myprintfn(2, "Using 'guessing' mode = guess randomly (lower winrate but faster)\n");
+		myprintfn(2, "Used 'guessing' mode = guess randomly (lower winrate but faster)\n");
 	} else {
 		if (GUESSING_MODE_var == 1) {
 			myprintfn(2, "Used 'guessing' mode = smartguess (slower but increased winrate)\n");
@@ -104,7 +104,7 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 			myprintfn(2, "Used 'guessing' mode = perfectmode (experimental, maximum winrate)\n");
 		}
 		myprintfn(2, "    Smartguess border est. avg deviation:   %+7.4f\n", (smartguess_diff_total / float(smartguess_attempts_total)));
-		myprintfn(2, "    Times when recursion got out of hand:%5i\n", smartguess_valves_tripped_total);
+		myprintfn(2, "    Smartguess overflow count:           %5i\n", smartguess_valves_tripped_total);
 	}
 
 	myprintfn(2, "Average time per game:                     %8.4f sec\n", (float(elapsed_sec) / float(games_total)));
@@ -133,9 +133,9 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 	myprintfn(2, "        Games lost while solving (1-99%%):%5i   %5.1f%%   %5.1f%%\n", games_lost - game_loss_histogram[0], (100. * float(games_lost - game_loss_histogram[0]) / float(games_total)), (100. * float(games_lost - game_loss_histogram[0]) / float(games_lost)));
 	// since I have the histogram I don't need to break it down further than "in the histogram vs not"
 	if (games_lost_unexpectedly != 0) {
-	myprintfn(2, "        Games lost unexpectedly:         %5i   %5.1f%%   %5.1f%%\n", games_lost_unexpectedly, (100. * float(games_lost_unexpectedly) / float(games_total)), (100. * float(games_lost_unexpectedly) / float(games_lost)));
+	myprintfn(2, "        Games lost unexpectedly:         %5i   %5.1f%%   %5.1f%%", games_lost_unexpectedly, (100. * float(games_lost_unexpectedly) / float(games_total)), (100. * float(games_lost_unexpectedly) / float(games_lost)));
 	}
-	myprintfn(2, "\n");
+	myprintfn(2, "\n\n");
 
 	fflush(runinfoptr->logfile);
 }

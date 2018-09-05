@@ -23,13 +23,13 @@ X/Y/mines
 #define NUM_GAMES_def				1000
 #define SIZEX_def					30
 #define SIZEY_def					16
-#define NUM_MINES_def				90
+#define NUM_MINES_def				95
 // TODO: elminate find_early_zeros mode?
 // will start the game by revealing a zero-cell, giving a huge advantage
 #define	FIND_EARLY_ZEROS_def		false
 // there are 3 guessing modes: 0=random, 1=smartguess, 2=perfectmode
 #define GUESSING_MODE_def			2
-#define VERSION_STRING_def			"v5.1"
+#define VERSION_STRING_def			"v5.2"
 // controls what gets printed to the console
 // 0: prints almost nothing to screen, 1: prints game-end to screen, 2: prints everything to screen
 // -1: logfile is empty except for run-end results

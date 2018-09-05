@@ -57,7 +57,8 @@ MS_solver.cpp, MS_solver.h
 #include <ctime> // logfile timestamp
 #include <chrono> // used to seed the RNG because time(0) only has 1-second resolution
 #include <random> // because I don't like using sequential seeds, or waiting when going very fast
-#include <Windows.h> // needed to test for and create LOGS directory
+#include <Windows.h> // needed to create LOGS directory
+#include <WinBase.h> // needed to test for existing logfile
 
 
 #include "MS_settings.h"
@@ -75,8 +76,8 @@ MS_solver.cpp, MS_solver.h
 // global vars:
 // these might like to go in the myruninfo struct, but they're intrinsic to the solver, not the game, so I left them isolated
 bool FIND_EARLY_ZEROS_var = false; // TODO: may want to eliminate this option so i can hide zerolist and get perfect privacy enforcement???
-//bool RANDOM_USE_SMART_var = false;
-int GUESSING_MODE_var = 0;
+int GUESSING_MODE_var = 0; // 0/1/2, controls random/smartguess/perfectmode
+bool USE_END_PAUSE_var = false; // if using -prompt or -def or no args, then set this to true
 
 class game mygame = game();					// init empty, will fill the field_blank later
 class runinfo myruninfo = runinfo();		// init emtpy, will fill during input parsing
@@ -105,8 +106,8 @@ This program is intended to generate and play a large number of Minesweeper\n\
 games to collect win/loss info or whatever other data I feel like. It applies\n\
 single-cell and two-cell logical strategies as much as possible before\n\
 revealing any unknown cells, of course. An extensive log is generated showing\n\
-most of the stages of the solver algorithm. Each game is replayable by using the\n\
-corresponding seed in the log, for closer analysis or debugging.\n\n\
+most of the stages of the solver algorithm. Each game is replayable by using\n\
+the corresponding seed in the log, for closer analysis or debugging.\n\n\
 *Usage/args:\n\
    -h, -?:             Print this text, then exit.\n\
    -pro, -prompt:      Interactively enter various run/game settings.\n\
@@ -118,8 +119,8 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
    -findz, -findzero:  1=on, 0=off. If on, reveal zeroes during earlygame.\n\
          Not human-like but more reliably reaches end-game.\n\
    -gmode:             Which guessing method to use. 0=random (fastest),\n\
-	     1=smartguess (slower but higher accuracy), 2=perfectmode (experimental,\n\
-         slowest but has highest accuracy).\n\
+	     1=smartguess (slower but higher accuracy), 2=perfectmode (slower &\n\
+         highest mem usage, but has highest accuracy).\n\
    -seed:              0=random seed, other=specify seed. Suppresses -num \n\
          argument and plays only 1 game.\n\
    -scr, -screen:      How much printed to screen. 0=minimal clutter,\n\
@@ -149,6 +150,7 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 		// no arguments specified, do the interactive prompt thing
 	LABEL_PROMPT:
 		std::string bufstr;
+		USE_END_PAUSE_var = true;
 		printf_s("Please enter settings for running the program. Defaults values are in brackets.\n");
 		printf_s("Number of games: [%i]  ", myruninfo.NUM_GAMES);
 		std::getline(std::cin, bufstr);
@@ -214,8 +216,8 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			// convert and apply
 			myruninfo.SCREEN = atoi(bufstr.c_str());
 			// NOTE: if the input is not numeric, it simply returns 0 instead of complaining
-			if (myruninfo.SCREEN > 2) { myruninfo.SCREEN = 2; }
-			if (myruninfo.SCREEN < 0) { myruninfo.SCREEN = 0; }
+			//if (myruninfo.SCREEN > 2) { myruninfo.SCREEN = 2; }
+			//if (myruninfo.SCREEN < 0) { myruninfo.SCREEN = 0; }
 		}
 		myruninfo.set_gamedata(tempsizex, tempsizey, tempnummines);
 		return 0;
@@ -233,6 +235,7 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 
 		} else if (!strncmp(argv[i], "-def", 4)) {
 			printf_s("Running with default values!\n");
+			USE_END_PAUSE_var = true;
 			myruninfo.set_gamedata(tempsizex, tempsizey, tempnummines);
 			return 0;
 
@@ -284,9 +287,9 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			} else {
 				printf_s("ERR: arg '%s' must be followed by a value, or else omitted!\n", argv[i]); return 1;
 			}
-		} else if (!strncmp(argv[i], "-smart", 6)) {
+		} else if (!strncmp(argv[i], "-gmode", 6)) {
 			if (argv[i + 1] != NULL) {
-				GUESSING_MODE_var = bool(atoi(argv[i + 1]));
+				GUESSING_MODE_var = atoi(argv[i + 1]);
 				// NOTE: if the argument at i+1 is not numeric, it simply returns 0 instead of complaining
 				i++; continue;
 			} else {
@@ -305,8 +308,8 @@ corresponding seed in the log, for closer analysis or debugging.\n\n\
 			if (argv[i + 1] != NULL) {
 				myruninfo.SCREEN = atoi(argv[i + 1]);
 				// NOTE: if the argument at i+1 is not numeric, it simply returns 0 instead of complaining
-				if (myruninfo.SCREEN > 2) { myruninfo.SCREEN = 2; }
-				if (myruninfo.SCREEN < 0) { myruninfo.SCREEN = 0; }
+				//if (myruninfo.SCREEN > 2) { myruninfo.SCREEN = 2; }
+				//if (myruninfo.SCREEN < 0) { myruninfo.SCREEN = 0; }
 				i++; continue;
 			} else {
 				printf_s("ERR: arg '%s' must be followed by a value, or else omitted!\n", argv[i]); return 1;
@@ -568,8 +571,9 @@ int main(int argc, char *argv[]) {
 	// full-run init:
 	// parse and store the input args here
 	// note to self: argc has # of input args, INCLUDING PROGRAM NAME, argv is pointers to c-strings
-	if (parse_input_args(argc, argv)==1) {
-		if(argc==1) {
+	if (parse_input_args(argc, argv) == 1) {
+		// if something failed in parsing,
+		if (argc == 1) {
 			system("pause"); // I know it was run from Windows Explorer (probably double-click) so pause before it closes
 		}
 		return 0; // abort execution
@@ -580,23 +584,42 @@ int main(int argc, char *argv[]) {
 	time_t t = time(0);
 	struct tm now;
 	localtime_s(&now, &t);
-	std::string buffer(80, '\0');
-	CreateDirectory("./LOGS/",NULL);
+	std::string filepath(80, '0');
+	CreateDirectory(".\\LOGS\\", NULL);
 	// TODO: should put brief error catching for CreateDirectory line, but I don't care
-	strftime(&buffer[0], buffer.size(), "./LOGS/minesweeper_%m%d%H%M%S.log", &now);
-	fopen_s(&myruninfo.logfile, buffer.c_str(), "w");
+	strftime(&filepath[0], filepath.size(), ".\\LOGS\\minesweeper_%m-%d-%H-%M-%S", &now);
+	//filepath = ".\\LOGS\\test";
+	filepath = filepath.c_str(); // eliminate the trailing space after the null-terminator (yes, actually needed)
+	// test if the file already exists (batch mode running really fast, maybe)
+	if (GetFileAttributes((filepath + ".log").c_str()) != INVALID_FILE_ATTRIBUTES) {
+		printf_s("File already exists, '%s', trying alts\n", (filepath + ".log").c_str());
+		int i = 0;
+		for (i = 1; i < 10; i++) {
+			if (GetFileAttributes((filepath + std::to_string(i) + ".log").c_str()) == INVALID_FILE_ATTRIBUTES) {
+				// file name is NOT taken
+				break;
+			}
+		}
+		if (i == 10) {
+			printf_s("All alternate names are already taken!? Aborting\n"); system("pause"); return 1;
+		}
+		filepath = filepath + std::to_string(i);
+	}
+	filepath = filepath + ".log";
+	// once the target file has been settled on,
+	fopen_s(&myruninfo.logfile, filepath.c_str(), "w");
 	if (!myruninfo.logfile) {
-		printf_s("File opening failed, '%s'\n", buffer.c_str());
+		printf_s("File opening failed, '%s'\n", filepath.c_str());
 		system("pause");
 		return 1;
 	}
-	myprintfn(2, "Logfile success! Created '%s'\n\n", buffer.c_str());
+	myprintfn(2, "Logfile success! Created '%s'\n\n", filepath.c_str());
 	myprintfn(2, "Beginning MinesweeperSolver version %s\n", VERSION_STRING_def);
 
 	// logfile header info: mostly everything from the #defines
 	myprintfn(2, "Going to play %i games, with X/Y/mines = %i/%i/%i\n", myruninfo.NUM_GAMES, myruninfo.get_SIZEX(), myruninfo.get_SIZEY(), myruninfo.get_NUM_MINES());
 	if (FIND_EARLY_ZEROS_var) {
-		myprintfn(2, "Using 'hunting' method = succeed early (uncover only zeroes until solving can begin)\n");
+		myprintfn(2, "Using 'hunting' method = zero-guess (uncover only zeroes until solving gets underway)\n");
 	} else {
 		myprintfn(2, "Using 'hunting' method = human-like (can lose at any stage)\n");
 	}
@@ -610,11 +633,11 @@ int main(int argc, char *argv[]) {
 	}
 
 	// construct a trivial random generator engine from a time-based seed:
-	unsigned int seed = std::chrono::duration_cast< std::chrono::milliseconds >( 
-		std::chrono::system_clock::now().time_since_epoch() 
+	unsigned int seed = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::system_clock::now().time_since_epoch()
 		).count();
 	std::default_random_engine generator(seed);
-	std::uniform_int_distribution<int> distribution(1, INT_MAX-1);
+	std::uniform_int_distribution<int> distribution(1, INT_MAX - 1);
 	// note, to invoke use: distribution(generator);
 
 
@@ -712,7 +735,7 @@ int main(int argc, char *argv[]) {
 	myrunstats.print_final_stats(&myruninfo);
 
 	fclose(myruninfo.logfile);
-	system("pause");
+	if (USE_END_PAUSE_var) { system("pause"); }
     return 0;
 }
 
