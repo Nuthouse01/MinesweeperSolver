@@ -159,5 +159,4 @@ v5.2:	Fixed bug in argument parser and allowed for command-line args to use scre
 		Added a batch file to run all 6 modes, 1 million games each
 		Added new stat, "games with at least 1 overflow" to see if that's the cause of massive overflow in normal smartguess
 		Copied function descriptions from .cpps to .hs, just because
-
-		LAST THING REMAINING: add reasonable win% and time stats for each of the 6 modes
+		Added reasonable win% and time stats for each of the 6 modes, in 'expert' and in 'medium' difficulties
