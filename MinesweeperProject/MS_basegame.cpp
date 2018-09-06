@@ -27,7 +27,7 @@ void runinfo::set_gamedata(int newx, int newy, int newmines) {
 	}
 }
 
-// constructor: with no args, don't do much
+// empty constructor: with no args, don't do much
 game::game() {
 	mines_remaining = 0;
 	zerolist.clear();
@@ -61,9 +61,11 @@ cell::cell() { // constructor
 	value = 0;
 	effective = 0;
 }
+// read-only conditional accessor, only works if status == VISIBLE
 short unsigned int cell::get_value() {
 	if (status == VISIBLE) { return value; } else { myprintfn(2, "HEY! NO CHEATING! Can't peek at cell contents!\n"); return 100; }
 }
+// read-only conditional accessor, only works if status == VISIBLE
 short unsigned int cell::get_effective() {
 	if (status == VISIBLE) { return effective; } else { myprintfn(2, "HEY! NO CHEATING! Can't peek at cell contents!\n"); return 100; }
 }
@@ -72,14 +74,14 @@ short unsigned int cell::get_effective() {
 
 
 
-// cellptr: if the given X and Y are valid, returns a pointer to the cell; otherwise returns NULL
+// checks x and y against field size; if valid, return cell pointer. if invalid, return NULL
 // during single-cell and two-cell iterations, just use &field[x][y] because the X and Y are guaranteed not off the edge
 class cell * game::cellptr(int x, int y) {
 	if ((x < 0) || (x >= myruninfo.get_SIZEX()) || (y < 0) || (y >= myruninfo.get_SIZEY())) { return NULL; }
 	return &field[x][y];
 }
 
-// adjacent: returns 3/5/8 adjacent cells, regardless of content or status
+// return a vector of the 3/5/8 cells surrounding the target
 // the order of the cells in the list will always be the same!!
 std::vector<class cell *> game::get_adjacent(class cell * me) {
 	std::vector<class cell *> adj_list;
@@ -100,10 +102,9 @@ std::vector<class cell *> game::get_adjacent(class cell * me) {
 }
 
 
-// reveal: recursive function, returns -1 if loss or the # of cells revealed otherwise
-// also calculates the 'effective' value of the freshly-revealed cell
-// if it's a zero, remove it from the zero-list and recurse
-// doesn't complain if you give it a null pointer
+// uncovers the target cell, turning it from UNKNOWN to VISIBLE. also calculates the 'effective' value of the freshly-revealed cell
+// remove it from the unklist, and if it's a zero, remove it from the zero-list and recurse!
+// returns -1 if the cell was a mine (GAME LOSS), or the # of cells revealed otherwise
 int game::reveal(class cell * revealme) {
 	if ((revealme == NULL) || (revealme->status != UNKNOWN))
 		return 0; // if it is somehow null, or flagged, satisfied, or already visible, then do nothing. will happen often.
@@ -143,9 +144,9 @@ int game::reveal(class cell * revealme) {
 	return 0; // dangling return just in case
 }
 
-// flag: sets as flagged, reduces # remaining mines, reduce "effective" values of everything visible around it
-// return 1=win, 0=continue. if not an actual mine, dump error messages and try to abort
-// NEW: return -1=win, 0=nothing happened, 1=flagged a cell, 2=flagged a non-mine cell
+// sets cell state to FLAGGED, reduces # remaining mines, reduce "effective" values of everything visible around it
+// also checks if the game was won as a result
+// return -1=win, 0=nothing happened (target already flagged), 1=flagged a cell, 2=flagged a non-mine cell
 int game::set_flag(class cell * flagme) {
 	if (flagme->status != UNKNOWN) { return 0; }
 
@@ -195,9 +196,8 @@ int game::set_flag(class cell * flagme) {
 	return 1; // successfully flagged a cell
 }
 
-// filter_adjacent: basically the same as get_adjacent but returns only the TARGET cells
-// can plausibly return an empty vector
-// this version takes a cell pointer
+// basically the same as get_adjacent but returns only cells of the given state
+// can plausibly return an empty vector... this version takes a cell pointer
 std::vector<class cell *> game::filter_adjacent(class cell * me, cell_state target) {
 	std::vector<class cell *> filt_list;
 	filt_list.reserve(8); // resize it once since this will be at most 8
@@ -215,9 +215,8 @@ std::vector<class cell *> game::filter_adjacent(class cell * me, cell_state targ
 }
 
 
-// filter_adjacent: basically the same as get_adjacent but returns only the TARGET cells
-// can plausibly return an empty vector
-// this version takes an adjacency vector
+// basically the same as get_adjacent but returns only cells of the given state
+// can plausibly return an empty vector... this version takes an adjacency vector
 std::vector<class cell *> game::filter_adjacent(std::vector<class cell *> adj, cell_state target) {
 	int i = 0;
 	while (i < adj.size()) {
@@ -232,7 +231,7 @@ std::vector<class cell *> game::filter_adjacent(std::vector<class cell *> adj, c
 
 
 // print: either 1) fully-revealed field, 2) in-progress field as seen by human, 3) in-progress field showing 'effective' values
-// borders made with +, zeros: blank, adjacency (or effective): number, unknown: -, flag or mine: *
+// borders made with +, zeros= blank, adjacency (or effective)= number, unknown= -, flag or mine= *
 // if SCREEN=0, don't print anything. if SCREEN=1, print to log. if SCREEN=2, print to both.
 void game::print_field(int mode, int screen) {
 	if (screen <= 0) return;
@@ -288,8 +287,9 @@ void game::print_field(int mode, int screen) {
 
 
 
-// reset_for_game: reset the field, place new mines, clear and repopulate the lists, etc
+// reset the field, place new mines, set 'value' for non-mine cells, clear and repopulate the lists, etc
 // returns the number of 8-cells found when generating (just because I can)
+// also prints the fully-revealed field after doing all this
 int game::reset_for_game() {
 	// reset the 'live' field
 	//memcpy(field, field_blank, get_SIZEX() * get_SIZEY() * sizeof(class cell)); // paste
@@ -338,8 +338,8 @@ int game::reset_for_game() {
 	// print the fully-revealed field to screen only if SCREEN==2
 	print_field(1, myruninfo.SCREEN);
 
-	zerolist.sort(sort_by_position);
-	unklist.sort(sort_by_position);
+	zerolist.sort(sort_cells);
+	unklist.sort(sort_cells);
 	// don't really need to sort the lists, because the find-and-remove method iterates linearly instead of using
 	//   a BST, but it makes me feel better to know its sorted. and I only sort it once per game, so its fine.
 	return eights;
@@ -358,13 +358,14 @@ void myprintfn(int p, const char* fmt, ...) {
 }
 
 
+// cells are sorted in reading-order, where 0,0 is top-left, +x is right and +y is down...
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
-// I want cells to be sorted in reading-order, where 0,0 is top-left, +x is right and +y is down...
 inline int compare_two_cells(class cell * a, class cell * b) {
 	return ((a->y * myruninfo.get_SIZEX()) + a->x) - ((b->y * myruninfo.get_SIZEX()) + b->x);
 }
 // if a goes before b, return true... needed for consistient sorting
-inline bool sort_by_position(class cell * a, class cell * b) {
+// use compare_two_cells to sort
+bool sort_cells(class cell * a, class cell * b) {
 	return (compare_two_cells(a, b) < 0);
 }
 

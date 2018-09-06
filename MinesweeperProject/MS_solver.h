@@ -44,12 +44,6 @@ scenario: one way to saturate the chosen pod when iterating on a chain
 // struct declarations without the actual contents
 // new pod-based architecture to handle the smartguess madness, MASSIVELY object-based unlike how it was before
 
-// name
-	// constructor(s)
-	// member variables
-	// member functions
-
-
 // a solution is one way to satisfy a chain
 struct solutionobj {
 	solutionobj() {};
@@ -60,8 +54,7 @@ struct solutionobj {
 	std::list<class cell *> allocation; // cells to flag to apply this solution; may only be partial
 };
 
-// NOTE: could be a tuple/threeple, but its cleaner this way
-// used in 'perfectmode' to count how many times a cell is flagged
+// used in 'perfectmode' to count how many times a cell is flagged across all possible solutions
 struct aggregate_cell {
 	aggregate_cell();
 	aggregate_cell(class cell * newme, int newtf);
@@ -71,8 +64,7 @@ struct aggregate_cell {
 };
 
 
-// holds the list of all allocations found, as a struct for some extra utility
-// to combine the results of recursion on separate chains, average the results from each chain and sum them (pending any better idea)
+// holds the list of all solutions found, as a struct for some extra utility
 struct podwise_return {
 	podwise_return();
 	podwise_return(float ans, int howmany);
@@ -82,13 +74,13 @@ struct podwise_return {
 	std::list<struct aggregate_cell> agg_info;
 	int agg_allocs;
 
+	inline int size();
+	inline float efficiency();
 	inline struct podwise_return& operator+=( class cell * & addlist);
 	inline struct podwise_return& operator+=(const std::vector<class cell *>& addvect);
 	inline struct podwise_return& operator+=(const std::list<class cell *>& addlist);
 	inline struct podwise_return& operator*=(const int& rhs);
 	inline struct podwise_return& operator+=(const int& rhs);
-	inline int size();
-	inline float efficiency();
 	float avg();
 	float max_val();
 	float min_val();
@@ -128,7 +120,6 @@ struct pod {
 	void add_link(class cell * shared, class cell * shared_root);
 	int remove_link(class cell * shared, bool isaflag);
 	std::list<struct scenario> pod::find_scenarios(bool use_t2_opt);
-private:
 	std::list<struct link>::iterator get_link(int l);
 };
 
@@ -145,7 +136,6 @@ struct chain {
 	std::vector<std::list<struct pod>::iterator> get_5x5_around(std::list<struct pod>::iterator center, bool include_corners);
 	std::vector<struct chain> sort_into_chains(int r, bool reduce);
 	int identify_chains();
-private:
 	void identify_chains_recurse(int idx, struct pod * me);
 };
 
@@ -161,7 +151,6 @@ struct riskholder {
 
 	void addrisk(class cell * foo, float newrisk);
 	std::pair<float, std::list<class cell *>> findminrisk();
-private:
 	float finalrisk(int x, int y);
 };
 
@@ -181,43 +170,93 @@ struct scenario {
 
 
 
-// small but essential utility functions
-inline int compare_list_of_cells(std::list<class cell *> a, std::list<class cell *> b);
+////////////////////////////////// small but essential utility functions
+
+// compare lists of cells
+inline int compare_two_lists_of_cells(std::list<class cell *> a, std::list<class cell *> b);
+// use compare_two_lists_of_cells to sort links, without caring about their shared_cell member
 bool sort_links_blind(std::list<struct link>::iterator a, std::list<struct link>::iterator b);
-inline int compare_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+// compare lists of links (lists of lists of cells), while ignoring the shared_cell member
+inline int compare_two_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+// use compare_two_pre_scenarios to sort
 bool sort_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+// use compare_two_pre_scenarios to uniquify
 bool equivalent_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b);
+// use compare_two_cells to sort
 bool sort_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b);
+// use compare_two_cells to uniquify
 bool equivalent_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b);
 
+// determine all ways to choose K from N, return a VECTOR of VECTORS of INTS ranging from 0 to N-1
 std::list<std::vector<int>> comb(int K, int N);
+// return the # of total combinations you can choose K from N, simple math function
 inline int comb_int(int K, int N);
+// simple math function, i never need to know higher than 8! so just hardcode the answers
 inline int factorial(int x);
 
 
 
 
-// functions for the recursive smartguess method(s)
+////////////////////////////////// functions for the recursive smartguess method(s)
+
+// build the master chain that will be used for smartguess... encapsulates steps 1/2/3 of original 11-stage plan
+// also apply "multicell" versions of nonoverlap-safe and nonoverlap-flag; partial matches and chaining logic rules together
+// may identify some cells as "definite safe" or "definite mine", and will reveal/flag them internally
+// if no cells are flagged/cleared, will output the master chain thru input arg for passing to full recursive function below
+// return: 1=win/-1=loss/0=continue (winning is rare but theoretically possible, but cannot lose unless something is seriously out of whack)
 int strat_multicell_logic_and_chain_builder(struct chain * buildme, int * thingsdone);
+// smartguess: searches for chain solutions with only one allocation (unique) to apply
+// perfectmode: ^ plus, if non-unique solution is found, eliminate all other solutions to that chain
+//				^ plus, searches for chain solutions that are definitely invalid and eliminates them
+// return: 1=win/-1=loss/0=continue (cannot lose unless something is seriously out of whack)
+// but, it only causes smartguess to return to the main play_game level if this function adds to *thingsdone
 int strat_endsolver_and_solution_reducer_logic(std::vector<struct podwise_return> * prvect, std::list<class cell *> * interior_list, int * thingsdone);
+// laboriously determine the % risk of each unknown cell and choose the one with the lowest risk to reveal
+// can completely solve the puzzle, too; if it does, it clears/flags everything it knows for certain
+// doesn't return cells, instead clears/flags them internally
+// modeflag: 0=guess, 1=multicell, 2=endsolver
+// return: 1=win/-1=loss/0=continue/-2=unexpected loss (winning is unlikely but possible)
 int smartguess(struct game_stats * gstats, int * thingsdone, int * modeflag);
+// recursively operates on a interconnected 'chain' of pods, and returns the list of all allocations it can find.
+// 'recursion_safety_valve' is set whenever it would return something resulting from 10k or more solutions, then from that point
+//		till the chain is done, it checks max 2 scenarios per level.
+// smartguess/normal: returns list of solutionvalues w/ weights
+// smartguess/endsolver: returns reduced/compressed/simplified roadmaps for the solutions + list of solutionvalues w/ weights
+// perfectmode/normal: returns aggregate data for each cell in the chain + list of solutionvalues w/ weights
+// perfectmode/endsolver: returns exhaustive list of all roadmaps, WAY more memory usage, dont even worry about optimizing it
+//		^ don't store/calculate aggregate data, synthesize the data after step 8 because step 8 will eliminate some of the solutions
 struct podwise_return podwise_recurse(int rescan_counter, int mines_from_above, struct chain * mychain, bool use_endsolver);
 
 
 
-// single-cell logic
+////////////////////////////////// single-cell logic
+
+// firstly, if an X-effective cell is next to X unknowns, flag them all.
+// secondly, if an X-adjacency cell is next to X flags (AKA effective = 0), all remaining unknowns are SAFE and can be revealed.
+// veryveryvery simple to understand. internally identifies and flags/clears cells. also responsible for setting state to "satisfied"
+// when appropriate. no special stats to track here, except for the "singlecell total action count".
+// return: 1=win/-1=loss/0=continue (cannot lose tho, unless something is seriously out of whack)
 int strat_singlecell(class cell * me, int * thingsdone);
 
 
-// two-cell strategies
+////////////////////////////////// two-cell strategies
+
+// looks for a specific arrangement of visible/unknown cells; if found, I can clear up to 2 cells.
+// unlike the other strategies, this isn't based in logic so much... this is just a pattern I noticed.
+// return: 1=win/-1=loss/0=continue (except cannot win, ever, and cannot lose unless something is seriously out of whack)
 int strat_121_cross(class cell * center, struct game_stats * gstats, int * thingsdone);
+//If two cells are X and X + 1, and the unknowns around X + 1 fall inside unknowns around X except for ONE, that
+//non-overlap cell must be a mine
+//Expanded to the general case: if two cells are X and X+Z, and X+Z has exactly Z unique cells, then all those cells must be mines
+// Compare against 5x5 region minus corners.
+// X(other) = 1/2/3/4,  Z = 1/2/3/4/5/6
+// return: 1=win/-1=loss/0=continue (except cannot lose here because it doesn't reveal cells here)
 int strat_nonoverlap_flag(class cell * center, struct game_stats * gstats, int * thingsdone);
+//If the adj unknown tiles of a 1/2/3 -square are a pure subset of the adj unknown tiles of another
+//square with the same value, then the non-overlap section can be safely revealed!
+//Compare against any other same-value cell in the 5x5 region minus corners
+// return: 1=win/-1=loss/0=continue (except cannot win, ever, and cannot lose unless something is seriously out of whack)
 int strat_nonoverlap_safe(class cell * center, struct game_stats * gstats, int * thingsdone);
-
-//int strat_121_cross_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * clearlist);
-//int strat_nonoverlap_flag_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * flaglist);
-//int strat_nonoverlap_safe_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * clearlist);
-
 
 
 

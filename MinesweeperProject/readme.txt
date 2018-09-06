@@ -31,11 +31,11 @@ corresponding seed in the log, for closer analysis or debugging.
 *To apply settings from the command-line, use any number of these:
    -num, -numgames:    How many games to play with these settings.
    -field:             Field size and number of mines, format= #x-#y-#mines.
-   -findz, -findzero:  1=on, 0=off. If on, reveal zeroes during earlygame.
+   -findz, -findzero:  1=on, 0=off. If on, reveal zeroes for first guess(es).
          Not human-like but more reliably reaches end-game.
    -gmode:             Which guessing method to use. 0=random (fastest),
-	     1=smartguess (slower but higher accuracy), 2=perfectmode (slower &\n\
-         highest mem usage, but has highest accuracy).\n\
+	     1=smartguess (slower but higher accuracy), 2=perfectmode (same but
+         highest mem usage, and has highest accuracy).
    -seed:              0=random seed, other=specify seed. Suppresses -num 
          argument and plays only 1 game.
    -scr, -screen:      How much printed to screen. 0=minimal clutter,
@@ -44,22 +44,49 @@ corresponding seed in the log, for closer analysis or debugging.
 
 
 /////////////////////////////////////////////////////////////////////////
-Normal stats over a large number of games (100k):
-TODO: UPDATE
+Normal stats over a large number of games (1,000,000):
 
-Winrate:
-Human-guess, Random-guess:	24.6%
-Human-guess, Smart-guess:	32.4%
-Zero-guess,  Random-guess:	50.8%
-Zero-guess,  Smart-guess:	59.9%
-All winrates have variance of +/- 0.3%
+Field size set to 30 x 16, with 99 mines (Expert difficulty from original Windows98 Minesweeper)
 
-Avg time per game:
-Human-guess, Random-guess:	0.0009 sec
-Human-guess, Smart-guess:	0.0021 sec
-Zero-guess,  Random-guess:	0.0017 sec
-Zero-guess,  Smart-guess:	0.0028 sec
-Note that the speed drops drastically when the program is printing each stage to the screen/log
+#Winrate:
+Normal mode, Random-guess:	12.5%
+Normal mode, Smart-guess:	20.1%
+Normal mode, Perfect-mode:	21.4%
+Zero-guess,  Random-guess:	30.5%
+Zero-guess,  Smart-guess:	40.8%
+Zero-guess,  Perfect-mode:	45.0%
+#Avg time per game:
+Normal mode, Random-guess:	0.0004 sec
+Normal mode, Smart-guess:	0.0019 sec*
+Normal mode, Perfect-mode:	0.0015 sec
+Zero-guess,  Random-guess:	0.0009 sec
+Zero-guess,  Smart-guess:	0.0029 sec*
+Zero-guess,  Perfect-mode:	0.0024 sec
+
+Field size set to 16 x 16, with 40 mines (Medium difficulty from original Windows98 Minesweeper)
+
+#Winrate:
+Normal mode, Random-guess:	49.4%
+Normal mode, Smart-guess:	55.1%**
+Normal mode, Perfect-mode:	53.4%**
+Zero-guess,  Random-guess:	81.6%
+Zero-guess,  Smart-guess:	86.1%
+Zero-guess,  Perfect-mode:	86.8%
+#Avg time per game:
+Normal mode, Random-guess:	0.0002 sec
+Normal mode, Smart-guess:	0.0005 sec
+Normal mode, Perfect-mode:	0.0005 sec
+Zero-guess,  Random-guess:	0.0003 sec
+Zero-guess,  Smart-guess:	0.0004 sec
+Zero-guess,  Perfect-mode:	0.0005 sec
+NOTE1: this speed was measured with screen=-1, disabling almost all printouts. The speed 
+  drops drastically when the program is printing each stage to the screen or log.
+*NOTE2: the time for smart-guess should be the same as (or slightly faster than) the time for 
+  perfectmode. However, because the algorithm is less intelligent, it gets into far more
+  "smartguess overflow" situations (~5x more) and goes deeper when it does. So, the average
+  time is longer.
+**NOTE3: i have no idea why the normal smartguess algorithm produces higher winrate than the
+  perfectmode algorithm in this situation... it doesnt make any sense...
 
 
 
@@ -103,10 +130,11 @@ It displays the total number of games played, total wins vs total losses, and fu
   how many games were lost somewhere in the middle. 
 
 There may be an additional category for "unexpected losses". (Unless there's a bug somewhere
-  I haven't caught,) unexpected losses only occur immediately after a smartguess overflow,
-  and even then they're quite rare. The logic assumes that the recursive algorithm tried every 
-  single scenario, but when an overflow happens it skips many scenarios. The logic may
-  produce incorrect results when given incomplete information, which results in a loss.
+  I haven't caught) unexpected losses only occur immediately after a smartguess overflow,
+  and even then they're quite rare (13 of 1,000,000 games). The logic assumes that the recursive
+  algorithm tried every single scenario, but when an overflow happens it skips many scenarios. 
+  The logic may produce incorrect results when given incomplete information, which results in an
+  unexpected loss.
 
 
 
@@ -144,16 +172,16 @@ Fundamental rules of Minesweeper
 In case you don't know how to play Minesweeper, this is how the game works.
 
 A known number of "mines" are randomly placed in a field of known size. Every cell that doesn't
-have a mine has an "adjacency number" which tells how many mines are in the 8 surrounding cells.
-The cells' contents are then hidden from the player, and need to be "revealed" one at a time
-(except that when a cell is revealed with 0 mines in the 8 surrounding cells, the game automatically
-reveals those 8 surrounding cells). If they reveal a mine, they lose. The player can "flag" cells 
-they believe to be mines, which locks it from being accidentally revealed, and the game is
-won when all mines are flagged and all non-mine cells are revealed.
+  have a mine has an "adjacency number" which tells how many mines are in the 8 surrounding cells.
+  The cells' contents are then hidden from the player, and need to be "revealed" one at a time
+  (except that when a cell is revealed with 0 mines in the 8 surrounding cells, the game automatically
+  reveals those 8 surrounding cells). If they reveal a mine, they lose. The player can "flag" cells 
+  they believe to be mines, which locks it from being accidentally revealed, and the game is
+  won when all mines are flagged and all non-mine cells are revealed.
 
 The information available to the player/solver is the status of each cell (hidden, flaged, or 
-revealed); if revealed, they also have access to its adjacency number; the size of the field,
-obviously; the total # of mines in the field; and how many flags they have placed.
+  revealed); if revealed, they also have access to its adjacency number; the size of the field,
+  obviously; the total # of mines in the field; and how many flags they have placed.
 
 
 
@@ -166,7 +194,7 @@ There are 3 "major stages" or "logic categories" for solving a minesweeper game:
 3) guessing
 
 My solver has very simple top-level architecture: obviously, an initial blind guess must be 
-made to start the game. From there it proceeds as follows:
+  made to start the game. From there it proceeds as follows:
 First, apply single-cell logic rules until exhausted. It's possible that no logic can be 
   applied at all, but the solver proceeds the same whether or not it does.
 Then, apply two-cell logic rules until exhausted. If ANY two-cell logic is applied, 
@@ -176,16 +204,16 @@ Lastly, guess an uncertain cell to reveal. If using smart-guess, it may instead 
   loop back and try single-cell again.
 
 The solver differs from the human-playable version in that the game is won when the last
-mine is flagged; it doesn't require all the non-mine cells to be revealed. Security/permissions 
-have been implemented, so that noone can cheat! All sensitive operations are handled by functions 
-in MS_basegame.h/cpp, and that file should not be changed.
+  mine is flagged; it doesn't require all the non-mine cells to be revealed. Security/permissions 
+  have been implemented, so that noone can cheat! All sensitive operations are handled by functions 
+  in MS_basegame.h/cpp, and that file should not be changed.
 NOTE1: until further notice, 'cell.value' is exposed so the smartguess function can compare its
-estimated # of mines in a chain against the actual # of mines in that chain, and know the
-deviation.
+  estimated # of mines in a chain against the actual # of mines in that chain, and know the
+  deviation.
 NOTE2: even if 'cell.value' was re-privatized, I can't think of anyway to make the 'zeroguess'
-feature work without enabling potential cheating. Starting out with a zero is inherently cheating!
-To be totally cheat-proof, this must be removed entirely, or allow for only one zero-guess per game.
-The current behavior allows repeated zero-guesses until at least 1 cell is flagged.
+  feature work without enabling potential cheating. Starting out with a zero is inherently cheating!
+  To be totally cheat-proof, this must be removed entirely, or allow for only one zero-guess per game.
+  The current behavior allows repeated zero-guesses until at least 1 cell is flagged.
 
 
 

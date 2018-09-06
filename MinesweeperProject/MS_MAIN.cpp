@@ -116,11 +116,11 @@ the corresponding seed in the log, for closer analysis or debugging.\n\n\
 *To apply settings from the command-line, use any number of these:\n\
    -num, -numgames:    How many games to play with these settings.\n\
    -field:             Field size and number of mines, format= #x-#y-#mines.\n\
-   -findz, -findzero:  1=on, 0=off. If on, reveal zeroes during earlygame.\n\
+   -findz, -findzero:  1=on, 0=off. If on, reveal zeroes for first guess(es).\n\
          Not human-like but more reliably reaches end-game.\n\
    -gmode:             Which guessing method to use. 0=random (fastest),\n\
-	     1=smartguess (slower but higher accuracy), 2=perfectmode (slower &\n\
-         highest mem usage, but has highest accuracy).\n\
+	     1=smartguess (slower but higher accuracy), 2=perfectmode (same but\n\
+         highest mem usage, and has highest accuracy).\n\
    -seed:              0=random seed, other=specify seed. Suppresses -num \n\
          argument and plays only 1 game.\n\
    -scr, -screen:      How much printed to screen. 0=minimal clutter,\n\

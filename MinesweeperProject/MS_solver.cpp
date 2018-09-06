@@ -29,19 +29,21 @@ aggregate_cell::aggregate_cell(class cell * newme, int newtf) {
 	me = newme; times_flagged = newtf;
 }
 
-podwise_return::podwise_return() { // construct empty
+// construct empty
+podwise_return::podwise_return() { 
 	solutions.clear();
 	agg_info.clear();
 	effort = 0;
 	agg_allocs = 0;
 }
-podwise_return::podwise_return(float ans, int howmany) { // construct from one value, signifies end-of-branch
+// construct from one value, signifies end-of-branch. set effort = 1
+podwise_return::podwise_return(float ans, int howmany) { 
 	solutions = std::list<struct solutionobj>(1, solutionobj(ans, howmany));
 	agg_info.clear();
 	effort = 1;
 	agg_allocs = 0;
 }
-// obvious
+// alias for solutions.size()
 inline int podwise_return::size() { return solutions.size(); }
 // returns value 0-1 showing what % of allocations were NOT tried (because they were found redundant), therefore higher efficiency is better
 inline float podwise_return::efficiency() {
@@ -193,7 +195,7 @@ void pod::add_link(class cell * shared, class cell * shared_root) {
 			//if (link_iter->linked_roots.begin() != middle) {
 				// note: for inplace_merge to work, begin != middle and middle != end
 				// but because this only merges if existing thing is found, this check is not needed
-				std::inplace_merge(link_iter->linked_roots.begin(), middle, link_iter->linked_roots.end(), sort_by_position);
+				std::inplace_merge(link_iter->linked_roots.begin(), middle, link_iter->linked_roots.end(), sort_cells);
 			//}
 			break;
 		}
@@ -487,8 +489,8 @@ scenario::scenario(std::list<std::list<struct link>::iterator> map, int num) {
 
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
 // compare lists of cells
-// compare_list_of_cells -> compare_two_cells
-inline int compare_list_of_cells(std::list<class cell *> a, std::list<class cell *> b) {
+// compare_two_lists_of_cells -> compare_two_cells
+inline int compare_two_lists_of_cells(std::list<class cell *> a, std::list<class cell *> b) {
 	if (a.size() != b.size())
 		return b.size() - a.size();
 	// if they are the same size...
@@ -502,44 +504,46 @@ inline int compare_list_of_cells(std::list<class cell *> a, std::list<class cell
 	return 0; // i guess they're identical
 }
 // return true if the 1st arg goes before the 2nd arg, return false if 1==2 or 2 goes before 1
-// compare scenarios (lists of cells), while ignoring the shared_cell arg
-// sort_links_blind -> compare_list_of_cells -> compare_two_cells
+// use compare_two_lists_of_cells to sort links, without caring about their shared_cell member
+// sort_links_blind -> compare_two_lists_of_cells -> compare_two_cells
 bool sort_links_blind(std::list<struct link>::iterator a, std::list<struct link>::iterator b) {
-	return (compare_list_of_cells(a->linked_roots, b->linked_roots) < 0);
+	return (compare_two_lists_of_cells(a->linked_roots, b->linked_roots) < 0);
 }
 // if a goes first, return negative; if b goes first, return positive; if identical, return 0
-// compare lists of scenarios (lists of lists of cells), while ignoring the shared_cell arg
-// compare_pre_scenarios -> compare_list_of_cells -> compare_two_cells
-inline int compare_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
+// compare lists of links (lists of lists of cells), while ignoring the shared_cell member
+// compare_two_pre_scenarios -> compare_two_lists_of_cells -> compare_two_cells
+inline int compare_two_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
 	if (a.size() != b.size())
 		return b.size() - a.size();
 	std::list<std::list<struct link>::iterator>::iterator ait = a.begin();
 	std::list<std::list<struct link>::iterator>::iterator bit = b.begin();
 	while (ait != a.end()) {
-		int c = compare_list_of_cells((*ait)->linked_roots, (*bit)->linked_roots);
+		int c = compare_two_lists_of_cells((*ait)->linked_roots, (*bit)->linked_roots);
 		if (c != 0) { return c; }
 		ait++; bit++;
 	}
 	return 0; // i guess they're identical
 }
 // return true if the 1st arg goes before the 2nd arg, return false if 1==2 or 2 goes before 1
-// intentionally ignores the shared_cell member
-// sort_pre_scenarios -> compare_pre_scenarios -> compare_list_of_cells -> compare_two_cells
+// use compare_two_pre_scenarios to sort
+// sort_pre_scenarios -> compare_two_pre_scenarios -> compare_two_lists_of_cells -> compare_two_cells
 bool sort_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
-	return (compare_pre_scenarios(a, b) < 0);
+	return (compare_two_pre_scenarios(a, b) < 0);
 }
-// equivalent_pre_scenarios -> compare_pre_scenarios -> compare_list_of_cells -> compare_two_cells
+// use compare_two_pre_scenarios to uniquify
+// equivalent_pre_scenarios -> compare_two_pre_scenarios -> compare_two_lists_of_cells -> compare_two_cells
 bool equivalent_pre_scenarios(std::list<std::list<struct link>::iterator> a, std::list<std::list<struct link>::iterator> b) {
-	return (compare_pre_scenarios(a, b) == 0);
+	return (compare_two_pre_scenarios(a, b) == 0);
 }
+// use compare_two_cells to sort
 bool sort_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return (compare_two_cells(a.me, b.me) < 0);}
+// use compare_two_cells to uniquify
 bool equivalent_aggregate_cell(struct aggregate_cell a, struct aggregate_cell b) {return (compare_two_cells(a.me, b.me) == 0);}
 
 
 
-// determine all ways to choose K from N, return a VECTOR of VECTORS of INTS
-// result is a list of lists of indices from 0 to N-1
 // ex: comb(3,5)
+// determine all ways to choose K from N, return a VECTOR of VECTORS of INTS ranging from 0 to N-1
 std::list<std::vector<int>> comb(int K, int N) {
 	assert(K <= N);
 	// thanks to some dude on StackExchange
@@ -551,7 +555,7 @@ std::list<std::vector<int>> comb(int K, int N) {
 	std::vector<bool> bitmask = std::vector<bool>();
 	bitmask.resize(K, 1);	// a vector of K leading 1's...
 	bitmask.resize(N, 0);	// ... followed by N-K trailing 0's, total length = N
-							// permutate the string of 1s and 0s and see what happens
+	// permutate the string of 1s and 0s and see what happens
 	do {
 		buildme.push_back(std::vector<int>(K, -1)); // start a new entry, know it will have size K
 		int z = 0;
@@ -570,7 +574,7 @@ inline int comb_int(int K, int N) {
 	assert(K <= N);
 	return factorial(N) / (factorial(K) * factorial(N - K));
 }
-// i never need to know higher than 8! so just hardcode the answers
+// simple math function, i never need to know higher than 8! so just hardcode the answers
 inline int factorial(int x) {
 	if (x < 2) return 1;
 	switch (x) {
@@ -1738,7 +1742,6 @@ int strat_singlecell(class cell * me, int * thingsdone) {
 // looks for a specific arrangement of visible/unknown cells; if found, I can clear up to 2 cells.
 // unlike the other strategies, this isn't based in logic so much... this is just a pattern I noticed.
 // return: 1=win/-1=loss/0=continue (except cannot win, ever, and cannot lose unless something is seriously out of whack)
-// NEW FORMAT: IN-PLACE VERSION, clears the cells here
 int strat_121_cross(class cell * center, struct game_stats * gstats, int * thingsdone) {
 	if (center->get_effective() != 2) { return 0; }
 	std::vector<class cell *> adj = mygame.get_adjacent(center);
@@ -1792,7 +1795,6 @@ int strat_121_cross(class cell * center, struct game_stats * gstats, int * thing
 // Compare against 5x5 region minus corners.
 // X(other) = 1/2/3/4,  Z = 1/2/3/4/5/6
 // return: 1=win/-1=loss/0=continue (except cannot lose here because it doesn't reveal cells here)
-// NEW FORMAT: IN-PLACE VERSION, clears the cells here
 int strat_nonoverlap_flag(class cell * center, struct game_stats * gstats, int * thingsdone) {
 	if ((center->get_effective() < 2) || (center->get_effective() == 8)) { return 0; } // center must be 2-7
 	std::vector<class cell *> me_unk = mygame.filter_adjacent(center, UNKNOWN);
@@ -1831,7 +1833,6 @@ int strat_nonoverlap_flag(class cell * center, struct game_stats * gstats, int *
 //square with the same value, then the non-overlap section can be safely revealed!
 //Compare against any other same-value cell in the 5x5 region minus corners
 // return: 1=win/-1=loss/0=continue (except cannot win, ever, and cannot lose unless something is seriously out of whack)
-// NEW FORMAT: IN-PLACE VERSION, clears the cells here
 int strat_nonoverlap_safe(class cell * center, struct game_stats * gstats, int * thingsdone) {
 	if (center->get_effective() > 3) { return 0; } // only works for center = 1/2/3
 	std::vector<class cell *> me_unk = mygame.filter_adjacent(center, UNKNOWN);
@@ -1868,101 +1869,4 @@ int strat_nonoverlap_safe(class cell * center, struct game_stats * gstats, int *
 }
 
 
-
-// I determined that the "queueing strategy" has no appreciable benefits compared to the "inline strategy"
-/*
-// return: 1=win/-1=loss/0=continue (except cannot win or lose here because it doesn't reveal cells here)
-// NEW FORMAT: QUEUEING VERSION, returns the cells to be cleared all at once
-int strat_121_cross_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * clearlist) {
-	if (center->get_effective() != 2) { return 0; }
-	std::vector<class cell *> adj = mygame.get_adjacent(center);
-	if (adj.size() == 3) // must be in a corner
-		return 0;
-
-	int r = 0; int s = 0;
-	class cell * right = mygame.cellptr((center->x) + 1, center->y);
-	class cell * left = mygame.cellptr((center->x) - 1, center->y);
-	class cell * down = mygame.cellptr(center->x, (center->y) + 1);
-	class cell * up = mygame.cellptr(center->x, (center->y) - 1);
-
-	// assuming 121 in horizontal line:
-	if ((right != NULL) && (left != NULL) && (right->get_status() == VISIBLE) && (left->get_status() == VISIBLE)
-		&& (right->get_effective() == 1) && (left->get_effective() == 1)) {
-		bool t = false;
-		if ((up != NULL) && (up->get_status() == UNKNOWN)) { t = true; clearlist->push_back(up); }
-		if ((down != NULL) && (down->get_status() == UNKNOWN)) { t = true; clearlist->push_back(down); }
-		if (t) { gstats->strat_121++; }
-		return 0;
-	}
-
-	// assuming 121 in vertical line:
-	if ((down != NULL) && (up != NULL) && (down->get_status() == VISIBLE) && (up->get_status() == VISIBLE)
-		&& (down->get_effective() == 1) && (up->get_effective() == 1)) {
-		bool t = false;
-		if ((left != NULL) && (left->get_status() == UNKNOWN)) { t = true; clearlist->push_back(left); }
-		if ((right != NULL) && (right->get_status() == UNKNOWN)) { t = true; clearlist->push_back(right); }
-		if (t) { gstats->strat_121++; }
-		return 0;
-	}
-	return 0;
-}
-
-// return: 1=win/-1=loss/0=continue (except cannot win or lose here because it doesn't reveal cells here)
-// NEW FORMAT: QUEUEING VERSION, returns the cells to be cleared all at once
-int strat_nonoverlap_flag_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * flaglist) {
-	if ((center->get_effective() < 2) || (center->get_effective() == 8)) { return 0; } // center must be 2-7
-	std::vector<class cell *> me_unk = mygame.filter_adjacent(center, UNKNOWN);
-	std::vector<class cell *> other_unk;
-	for (int b = -2; b < 3; b++) {
-		for (int a = -2; a < 3; a++) {
-			if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
-			class cell * other = mygame.cellptr(center->x + a, center->y + b);
-			if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; }			// must exist and be already revealed
-			if ((other->get_effective() == 0) || (other->get_effective() > 4)) { continue; }	// other must be 1/2/3/4
-			int z = center->get_effective() - other->get_effective();
-			if (z < 1) { continue; }														// z must be 1 or greater
-
-			other_unk = mygame.filter_adjacent(other, UNKNOWN);
-
-			std::vector<std::vector<class cell *>> nonoverlap = extract_overlap(me_unk, other_unk);
-			// checking if OTHER is a subset of ME, AKA ME has some extra unique cells
-			if (nonoverlap[0].size() == z) {
-				gstats->strat_nov_flag++;
-				flaglist->insert(flaglist->end(), nonoverlap[0].begin(), nonoverlap[0].end());
-				return 0;
-			}
-		}
-	}
-
-	return 0;
-}
-
-// return: 1=win/-1=loss/0=continue (except cannot win or lose here because it doesn't reveal cells here)
-// NEW FORMAT: QUEUEING VERSION, returns the cells to be cleared all at once
-int strat_nonoverlap_safe_Q(class cell * center, struct game_stats * gstats, std::list<class cell *> * clearlist) {
-	if (center->get_effective() > 3) { return 0; }
-	std::vector<class cell *> me_unk = mygame.filter_adjacent(center, UNKNOWN);
-	std::vector<class cell *> other_unk;
-	int retme = 0;
-	for (int b = -2; b < 3; b++) { for (int a = -2; a < 3; a++) {
-		if (((a == -2 || a == 2) && (b == -2 || b == 2)) || (a == 0 && b == 0)) { continue; } // skip myself and also the corners
-		class cell * other = mygame.cellptr(center->x + a, center->y + b);
-		if ((other == NULL) || (other->get_status() != VISIBLE)) { continue; }	// must exist and be already revealed
-		if (center->get_effective() != other->get_effective()) { continue; }	// the two being compared must have same effective value
-		other_unk = mygame.filter_adjacent(other, UNKNOWN);
-		if (me_unk.size() >= other_unk.size()) { continue; } // shortcut, can't be subset if it's bigger or equal
-
-		std::vector<std::vector<class cell *>> nonoverlap = extract_overlap(me_unk, other_unk);
-		// checking if ME is a subset of OTHER
-		if (nonoverlap[0].empty() && !(nonoverlap[1].empty())) {
-			clearlist->insert(clearlist->end(), nonoverlap[1].begin(), nonoverlap[1].end());
-			gstats->strat_nov_safe++;
-			return 0;
-			//me_unk = mygame.filter_adjacent(center, UNKNOWN); // update me_unk, then continue iterating thru the 5x5
-		}
-	}}
-
-	return 0;
-}
-*/
 

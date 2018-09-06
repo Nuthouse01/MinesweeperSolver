@@ -27,7 +27,6 @@ game_stats::game_stats() {
 	luck_value_sum = 0.;
 }
 
-// simple init, also sets start time
 run_stats::run_stats() {
 	std::chrono::milliseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >(
 		std::chrono::system_clock::now().time_since_epoch()
@@ -104,17 +103,17 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 		} else if (GUESSING_MODE_var == 2) {
 			myprintfn(2, "Used 'guessing' mode = perfectmode (experimental, maximum winrate)\n");
 		}
-		myprintfn(2, "    Smartguess border est. avg deviation:   %+7.4f\n", (smartguess_diff_total / float(smartguess_attempts_total)));
-		myprintfn(2, "    Smartguess overflow count:           %5i\n", smartguess_valves_tripped_total);
-		myprintfn(2, "    Games with at least 1 overflow:      %5i\n", games_with_smartguess_valves_tripped);
+		myprintfn(2, "    Smartguess border est. avg deviation:   %+8.4f\n", (smartguess_diff_total / float(smartguess_attempts_total)));
+		myprintfn(2, "    Smartguess overflow count:           %6i\n", smartguess_valves_tripped_total);
+		myprintfn(2, "    Games with at least 1 overflow:      %6i\n", games_with_smartguess_valves_tripped);
 	}
 
-	myprintfn(2, "Average time per game:                     %8.4f sec\n", (float(elapsed_sec) / float(games_total)));
-	myprintfn(2, "Average 121-cross uses per game:           %5.1f\n", (float(strat_121_total) / float(games_total)));
-	myprintfn(2, "Avg nonoverlap-flag (simple) per game:     %5.1f\n", (float(strat_nov_flag_total) / float(games_total)));
-	myprintfn(2, "Avg nonoverlap-safe (simple) per game:     %5.1f\n", (float(strat_nov_safe_total) / float(games_total)));
-	myprintfn(2, "Avg number of guesses needed to win:       %6.2f + initial guess\n", (float(num_guesses_in_wins) / float(games_won)));
-	myprintfn(2, "Average safety per guess:                  %7.3f%%\n", 100. * (float(total_luck_per_guess) / float(games_total + num_guesses_in_losses + num_guesses_in_wins))); // everything
+	myprintfn(2, "Average time per game:                     %9.4f sec\n", (float(elapsed_sec) / float(games_total)));
+	myprintfn(2, "Average 121-cross uses per game:           %6.1f\n", (float(strat_121_total) / float(games_total)));
+	myprintfn(2, "Avg nonoverlap-flag (simple) per game:     %6.1f\n", (float(strat_nov_flag_total) / float(games_total)));
+	myprintfn(2, "Avg nonoverlap-safe (simple) per game:     %6.1f\n", (float(strat_nov_safe_total) / float(games_total)));
+	myprintfn(2, "Avg number of guesses needed to win:       %7.2f + initial guess\n", (float(num_guesses_in_wins) / float(games_won)));
+	myprintfn(2, "Average safety per guess:                  %8.3f%%\n", 100. * (float(total_luck_per_guess) / float(games_total + num_guesses_in_losses + num_guesses_in_wins))); // everything
 	//myprintfn(2, "Avg luck/safety value in each win:         %7.3f%%\n", 100. * (float(total_luck_in_wins) / float(games_won)));
 
 	// (1. - (float(runinfoptr->get_NUM_MINES()) / float(runinfoptr->get_SIZEX() * runinfoptr->get_SIZEY())));
@@ -122,20 +121,20 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 	// (sum of luck from all guesses) / (num guesses in wins + num guesses in losses)
 	// (sum of luck from all guesses + initial) / (num guesses in wins + num guesses in losses + total games)
 	if (games_with_eights != 0) {
-	myprintfn(2, "    Games with 8-adj cells:              %5i\n", games_with_eights);
+	myprintfn(2, "    Games with 8-adj cells:              %6i\n", games_with_eights);
 	}
 	myprintfn(2, "\n");
-	myprintfn(2, "Total games played:                     %6i\n", games_total);
+	myprintfn(2, "Total games played:                     %7i\n", games_total);
 
-	myprintfn(2, "    Total games won:                     %5i   %5.1f%%    -----\n", games_won, (100. * float(games_won) / float(games_total)));
-	myprintfn(2, "        Games won without guessing:      %5i   %5.1f%%   %5.1f%%\n", games_won_noguessing, (100. * float(games_won_noguessing) / float(games_total)), (100. * float(games_won_noguessing) / float(games_won)));
-	myprintfn(2, "        Games won that required guessing:%5i   %5.1f%%   %5.1f%%\n", games_won_guessing, (100. * float(games_won_guessing) / float(games_total)), (100. * float(games_won_guessing) / float(games_won)));
-	myprintfn(2, "    Total games lost:                    %5i   %5.1f%%    -----\n", games_lost, (100. * float(games_lost) / float(games_total)));
-	myprintfn(2, "        Games lost before 1st flag (<1%%):%5i   %5.1f%%   %5.1f%%\n", game_loss_histogram[0], (100. * float(game_loss_histogram[0]) / float(games_total)), (100. * float(game_loss_histogram[0]) / float(games_lost)));
-	myprintfn(2, "        Games lost while solving (1-99%%):%5i   %5.1f%%   %5.1f%%\n", games_lost - game_loss_histogram[0], (100. * float(games_lost - game_loss_histogram[0]) / float(games_total)), (100. * float(games_lost - game_loss_histogram[0]) / float(games_lost)));
+	myprintfn(2, "    Total games won:                     %6i   %5.1f%%    -----\n", games_won, (100. * float(games_won) / float(games_total)));
+	myprintfn(2, "        Games won without guessing:      %6i   %5.1f%%   %5.1f%%\n", games_won_noguessing, (100. * float(games_won_noguessing) / float(games_total)), (100. * float(games_won_noguessing) / float(games_won)));
+	myprintfn(2, "        Games won that required guessing:%6i   %5.1f%%   %5.1f%%\n", games_won_guessing, (100. * float(games_won_guessing) / float(games_total)), (100. * float(games_won_guessing) / float(games_won)));
+	myprintfn(2, "    Total games lost:                    %6i   %5.1f%%    -----\n", games_lost, (100. * float(games_lost) / float(games_total)));
+	myprintfn(2, "        Games lost before 1st flag (<1%%):%6i   %5.1f%%   %5.1f%%\n", game_loss_histogram[0], (100. * float(game_loss_histogram[0]) / float(games_total)), (100. * float(game_loss_histogram[0]) / float(games_lost)));
+	myprintfn(2, "        Games lost while solving (1-99%%):%6i   %5.1f%%   %5.1f%%\n", games_lost - game_loss_histogram[0], (100. * float(games_lost - game_loss_histogram[0]) / float(games_total)), (100. * float(games_lost - game_loss_histogram[0]) / float(games_lost)));
 	// since I have the histogram I don't need to break it down further than "in the histogram vs not"
 	if (games_lost_unexpectedly != 0) {
-	myprintfn(2, "        Games lost unexpectedly:         %5i   %5.1f%%   %5.1f%%", games_lost_unexpectedly, (100. * float(games_lost_unexpectedly) / float(games_total)), (100. * float(games_lost_unexpectedly) / float(games_lost)));
+	myprintfn(2, "        Games lost unexpectedly:         %6i   %5.1f%%   %5.1f%%", games_lost_unexpectedly, (100. * float(games_lost_unexpectedly) / float(games_total)), (100. * float(games_lost_unexpectedly) / float(games_lost)));
 	}
 	myprintfn(2, "\n\n");
 
@@ -144,8 +143,7 @@ void run_stats::print_final_stats(class runinfo * runinfoptr) {
 
 
 
-// print the stats of the current game, and some whitespace below
-// if SCREEN=0, don't print anything. if SCREEN=1, print to log. if SCREEN=2, print to both.
+// print the stats of the current game, and some whitespace below. SCREEN=0, don't print anything. SCREEN=1, print to log. SCREEN=2, print to both.
 void game_stats::print_gamestats(int screen, class game * gameptr, class runinfo * runinfoptr) {
 	gameptr->print_field(3, screen);
 	myprintfn(screen, "Transition map: %s\n", trans_map.c_str());
@@ -166,7 +164,7 @@ void run_stats::init_histogram(int num_mines) {
 	game_loss_histogram.resize(num_mines, 0);
 	game_loss_histogram.shrink_to_fit();
 }
-// increment the correct entry
+// increment the correct entry. could be in-line but this is better encapsulation
 void run_stats::inc_histogram(int minesplaced) {
 	game_loss_histogram[minesplaced]++;
 }
